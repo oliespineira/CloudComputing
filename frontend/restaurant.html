@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register Restaurant - ByteBite</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <h1 class="logo">🍽️ ByteBite</h1>
+            <div class="nav-links">
+                <a href="index.html">Home</a>
+                <a href="restaurant.html" class="active">Restaurant</a>
+                <a href="customer.html">Customer</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="form-card">
+            <h2>Register Your Restaurant</h2>
+            <p class="subtitle">Add your restaurant to ByteBite platform</p>
+            
+            <form id="restaurantForm">
+                <div class="form-group">
+                    <label for="restaurantName">Restaurant Name *</label>
+                    <input 
+                        type="text" 
+                        id="restaurantName" 
+                        name="restaurantName" 
+                        placeholder="e.g., Pizza Palace"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="deliveryArea">Delivery Area *</label>
+                    <select id="deliveryArea" name="deliveryArea" required>
+                        <option value="">Select an area</option>
+                        <option value="North">North</option>
+                        <option value="Central">Central</option>
+                        <option value="South">South</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn-primary" id="submitBtn">
+                    Register Restaurant
+                </button>
+            </form>
+
+            <div id="message" class="message"></div>
+        </div>
+
+        <div class="info-card">
+            <h3>📋 Instructions</h3>
+            <ul>
+                <li>Enter your restaurant name</li>
+                <li>Select the delivery area you serve</li>
+                <li>Click "Register Restaurant" to add it to the platform</li>
+                <li>After registration, you can add meals for your restaurant</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Azure Function URL and key
+        // NOTE: In production, store the function key securely (environment variables, Azure Key Vault, etc.)
+        // Get the key from Azure Portal: Function App → Functions → RegisterRestaurant → Function Keys
+        const FUNCTION_URL = 'https://registerrestaurantg1.azurewebsites.net/api/registerrestaurant';
+        const FUNCTION_KEY = 'YOUR_FUNCTION_KEY_HERE'; // Replace with your actual function key
+
+        document.getElementById('restaurantForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const messageDiv = document.getElementById('message');
+            const form = e.target;
+            
+            // Get form values
+            const restaurantName = document.getElementById('restaurantName').value.trim();
+            const deliveryArea = document.getElementById('deliveryArea').value;
+            
+            // Validate
+            if (!restaurantName || !deliveryArea) {
+                showMessage('Please fill in all required fields.', 'error');
+                return;
+            }
+            
+            // Disable button and show loading
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Registering...';
+            messageDiv.innerHTML = '';
+            
+            try {
+                // Call Azure Function
+                const url = `${FUNCTION_URL}?restaurantName=${encodeURIComponent(restaurantName)}&deliveryArea=${encodeURIComponent(deliveryArea)}&code=${FUNCTION_KEY}`;
+                
+                console.log('Calling Azure Function:', url);
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    mode: 'cors'
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Error response:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (data.ok) {
+                    showMessage(
+                        `✅ Success! Restaurant "${restaurantName}" has been registered in the ${deliveryArea} area.`,
+                        'success'
+                    );
+                    // Reset form
+                    form.reset();
+                } else {
+                    showMessage(
+                        `❌ Error: ${data.error || 'Failed to register restaurant'}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                console.error('Full error:', error);
+                let errorMsg = `❌ Error: ${error.message}`;
+                
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMsg = `❌ Network error: Cannot connect to Azure Function. Please check:
+                    <br>1. Your internet connection
+                    <br>2. The function URL is correct
+                    <br>3. CORS is properly configured
+                    <br><br>Error details: ${error.message}`;
+                }
+                
+                showMessage(errorMsg, 'error');
+            } finally {
+                // Re-enable button
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Register Restaurant';
+            }
+        });
+        
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = text; // Use innerHTML to support HTML in error messages
+            messageDiv.className = `message ${type}`;
+            messageDiv.style.display = 'block';
+            
+            // Auto-hide success messages after 5 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    messageDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+        
+        // Test connection on page load
+        window.addEventListener('load', function() {
+            console.log('Page loaded. Function URL:', FUNCTION_URL);
+            console.log('Testing Azure Function connection...');
+        });
+    </script>
+</body>
+</html>
+
