@@ -16,81 +16,7 @@ const API_CONFIG = {
   }
 };
 
-// Mock data for Milestone 3 (static frontend demonstration)
-const MOCK_MEALS = [
-  {
-    restaurantName: "Mario's Pizza House",
-    dishName: "Margherita Pizza",
-    description: "Classic Italian pizza with fresh mozzarella, tomato sauce, and basil",
-    price: 12.99,
-    prepTime: 25,
-    area: "Central",
-    imageUrl: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400"
-  },
-  {
-    restaurantName: "Mario's Pizza House",
-    dishName: "Pepperoni Pizza",
-    description: "Loaded with premium pepperoni and mozzarella cheese",
-    price: 14.99,
-    prepTime: 25,
-    area: "Central",
-    imageUrl: "https://images.unsplash.com/photo-1628840042765-356cda07504e?w=400"
-  },
-  {
-    restaurantName: "Sushi Zen",
-    dishName: "California Roll",
-    description: "Fresh crab, avocado, and cucumber wrapped in sushi rice",
-    price: 11.50,
-    prepTime: 15,
-    area: "Central",
-    imageUrl: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=400"
-  },
-  {
-    restaurantName: "Burger Kingdom",
-    dishName: "Classic Cheeseburger",
-    description: "Juicy beef patty with cheddar, lettuce, tomato, and special sauce",
-    price: 9.99,
-    prepTime: 20,
-    area: "North",
-    imageUrl: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400"
-  },
-  {
-    restaurantName: "Burger Kingdom",
-    dishName: "Bacon Deluxe",
-    description: "Double patty with crispy bacon, cheese, and BBQ sauce",
-    price: 13.99,
-    prepTime: 22,
-    area: "North",
-    imageUrl: "https://images.unsplash.com/photo-1553979459-d2229ba7433b?w=400"
-  },
-  {
-    restaurantName: "Taco Fiesta",
-    dishName: "Chicken Tacos",
-    description: "Three soft tacos with grilled chicken, salsa, and guacamole",
-    price: 10.50,
-    prepTime: 18,
-    area: "South",
-    imageUrl: "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400"
-  },
-  {
-    restaurantName: "Pasta Paradise",
-    dishName: "Carbonara",
-    description: "Creamy pasta with bacon, egg, and parmesan cheese",
-    price: 13.50,
-    prepTime: 20,
-    area: "East",
-    imageUrl: "https://images.unsplash.com/photo-1612874742237-6526221588e3?w=400"
-  },
-  {
-    restaurantName: "Asian Wok",
-    dishName: "Pad Thai",
-    description: "Stir-fried rice noodles with shrimp, peanuts, and vegetables",
-    price: 12.00,
-    prepTime: 25,
-    area: "West",
-    imageUrl: "https://images.unsplash.com/photo-1559314809-0d155014e29e?w=400"
-  }
-];
+// Frontend now uses real Azure Functions - no mock data needed
 
 // ========================================
 // RESTAURANT PAGE FUNCTIONALITY
@@ -116,8 +42,7 @@ if (document.getElementById('restaurantForm')) {
       description: document.getElementById('description').value.trim(),
       price: parseFloat(document.getElementById('price').value),
       prepTime: parseInt(document.getElementById('prepTime').value),
-      deliveryArea: document.getElementById('deliveryArea').value,
-      imageUrl: document.getElementById('imageUrl').value.trim()
+      deliveryArea: document.getElementById('deliveryArea').value
     };
 
     // Validation
@@ -452,4 +377,4 @@ function validatePhone(phone) {
   return re.test(phone) && phone.replace(/\D/g, '').length >= 9;
 }
 
-console.log('FoodHub app initialized - Milestone 3');
+console.log('ByteBite app initialized - Connected to Azure Functions');

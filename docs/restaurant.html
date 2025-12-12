@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ByteBite - Restaurant Portal</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🍽️ ByteBite - Restaurant Portal</h1>
+      <nav>
+        <a href="index.html">Home</a>
+        <a href="customer.html">Customer Portal</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="form-section">
+        <h2>Register a New Meal</h2>
+        <form id="restaurantForm">
+          <div class="form-group">
+            <label for="restaurantName">Restaurant Name:</label>
+            <input type="text" id="restaurantName" required>
+          </div>
+
+          <div class="form-group">
+            <label for="dishName">Dish Name:</label>
+            <input type="text" id="dishName" required>
+          </div>
+
+          <div class="form-group">
+            <label for="description">Description:</label>
+            <textarea id="description" rows="3" required></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="price">Price (€):</label>
+            <input type="number" id="price" step="0.01" min="0" required>
+          </div>
+
+          <div class="form-group">
+            <label for="prepTime">Preparation Time (minutes):</label>
+            <input type="number" id="prepTime" min="1" required>
+          </div>
+
+          <div class="form-group">
+            <label for="deliveryArea">Delivery Area:</label>
+            <select id="deliveryArea" required>
+              <option value="">Select an area</option>
+              <option value="North">North</option>
+              <option value="Central">Central</option>
+              <option value="South">South</option>
+            </select>
+          </div>
+
+          <button type="submit" class="btn-primary">Register Meal</button>
+        </form>
+
+        <div id="successMessage" class="message success" style="display: none;">
+          ✅ Meal registered successfully!
+        </div>
+        <div id="errorMessage" class="message error" style="display: none;">
+          <span id="errorText"></span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

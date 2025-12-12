@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ByteBite - Customer Portal</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🍕 ByteBite - Order Food</h1>
+      <nav>
+        <a href="index.html">Home</a>
+        <a href="restaurant.html">Restaurant Portal</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="form-section">
+        <h2>Select Your Delivery Area</h2>
+        <form id="areaForm">
+          <div class="form-group">
+            <label for="customerArea">Delivery Area:</label>
+            <select id="customerArea" required>
+              <option value="">Choose your area</option>
+              <option value="North">North</option>
+              <option value="Central">Central</option>
+              <option value="South">South</option>
+            </select>
+            <button type="submit" class="btn-primary">Browse Meals</button>
+          </div>
+        </form>
+      </section>
+
+      <div id="loadingState" class="loading" style="display: none;">
+        <p>Loading meals...</p>
+      </div>
+
+      <section id="mealsContainer" class="meals-section" style="display: none;">
+        <h2>Available Meals in <span id="selectedArea"></span></h2>
+        <div id="mealsGrid" class="meals-grid"></div>
+        <div id="noMealsMessage" class="message" style="display: none;">
+          No meals available in this area.
+        </div>
+      </section>
+
+      <section id="orderFormContainer" class="form-section" style="display: none;">
+        <h2>Your Order</h2>
+        
+        <div id="selectedMealsContainer" class="selected-meals"></div>
+
+        <div class="order-summary">
+          <p><strong>Total Items:</strong> <span id="totalItems">0</span></p>
+          <p><strong>Total Price:</strong> <span id="totalPrice">€0.00</span></p>
+        </div>
+
+        <form id="orderForm">
+          <div class="form-group">
+            <label for="customerName">Your Name:</label>
+            <input type="text" id="customerName" required>
+          </div>
+
+          <div class="form-group">
+            <label for="customerAddress">Delivery Address:</label>
+            <textarea id="customerAddress" rows="3" required></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="customerPhone">Phone Number:</label>
+            <input type="tel" id="customerPhone">
+          </div>
+
+          <div class="form-group">
+            <label for="specialInstructions">Special Instructions (optional):</label>
+            <textarea id="specialInstructions" rows="2"></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="clearOrderBtn" class="btn btn-secondary">Clear Order</button>
+            <button type="submit" class="btn btn-primary">Place Order</button>
+          </div>
+        </form>
+
+        <div id="errorMessage" class="message error" style="display: none;">
+          <span id="errorText"></span>
+        </div>
+      </section>
+
+      <section id="confirmationMessage" class="confirmation-section" style="display: none;">
+        <h2>✅ Order Confirmed!</h2>
+        <div class="confirmation-details">
+          <p><strong>Order for:</strong> <span id="confirmName"></span></p>
+          <p><strong>Total:</strong> <span id="confirmTotal"></span></p>
+          <p><strong>Items:</strong> <span id="confirmItems"></span></p>
+          <p><strong>Estimated Delivery Time:</strong> <span id="confirmDeliveryTime"></span></p>
+          <p><strong>Delivery Address:</strong> <span id="confirmAddress"></span></p>
+        </div>
+        <button id="newOrderBtn" class="btn btn-primary">Place New Order</button>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
