@@ -3,9 +3,8 @@
 // ========================================
 
 // Azure Functions endpoints
-// For local development: http://localhost:7071/api
-// For production: Update with your deployed function URL
-const API_BASE_URL = 'http://localhost:7071/api';
+// Production URL - works on GitHub Pages and locally
+const API_BASE_URL = 'https://bytebite-functions-g6gng2eahnb0f2gw.westeurope-01.azurewebsites.net/api';
 
 const API_CONFIG = {
   baseUrl: API_BASE_URL,
