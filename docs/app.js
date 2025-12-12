@@ -9,9 +9,9 @@ const API_BASE_URL = 'https://bytebite-functions-g6gng2eahnb0f2gw.westeurope-01.
 const API_CONFIG = {
   baseUrl: API_BASE_URL,
   endpoints: {
-    registerMeal: `${API_BASE_URL}/RegisterMeal`,
-    getMealsByArea: `${API_BASE_URL}/GetMealsByArea`,
-    submitOrder: `${API_BASE_URL}/SubmitOrder`
+    registerMeal: `${API_BASE_URL}/registermeal`,
+    getMealsByArea: `${API_BASE_URL}/getmealsbyarea`,
+    submitOrder: `${API_BASE_URL}/submitorder`
   }
 };
 
