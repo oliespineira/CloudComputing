@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order Food - FoodHub</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-brand">
+        <h1>🍽️ FoodHub</h1>
+      </div>
+      <div class="nav-links">
+        <a href="index.html" class="nav-link">Home</a>
+        <a href="restaurant.html" class="nav-link">For Restaurants</a>
+        <a href="customer.html" class="nav-link active">Order Food</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="page-header">
+      <div class="container">
+        <h1>Order Delicious Food</h1>
+        <p>Browse meals from restaurants in your area</p>
+      </div>
+    </section>
+
+    <section class="order-section">
+      <div class="container">
+        <!-- Area Selection -->
+        <div class="area-selector">
+          <h2>Select Your Delivery Area</h2>
+          <form id="areaForm" class="area-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="customerArea">Delivery Area *</label>
+                <select id="customerArea" name="customerArea" required>
+                  <option value="">-- Select Your Area --</option>
+                  <option value="Central">Central</option>
+                  <option value="North">North</option>
+                  <option value="South">South</option>
+                  <option value="East">East</option>
+                  <option value="West">West</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary">
+                Browse Meals
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="loading-state" style="display: none;">
+          <div class="spinner"></div>
+          <p>Loading available meals...</p>
+        </div>
+
+        <!-- Meals Display -->
+        <div id="mealsContainer" style="display: none;">
+          <h2>Available Meals in <span id="selectedArea"></span></h2>
+          
+          <div id="mealsGrid" class="meals-grid">
+            <!-- Meals will be dynamically loaded here -->
+          </div>
+
+          <div id="noMealsMessage" class="info-box" style="display: none;">
+            <p>😔 No meals available in this area yet. Check back later!</p>
+          </div>
+        </div>
+
+        <!-- Order Form -->
+        <div id="orderFormContainer" style="display: none;">
+          <div class="order-summary-section">
+            <h2>Your Order</h2>
+            
+            <div id="selectedMealsContainer" class="selected-meals">
+              <p class="text-muted">No items selected yet</p>
+            </div>
+
+            <div class="order-total">
+              <div class="total-row">
+                <span>Total Items:</span>
+                <strong id="totalItems">0</strong>
+              </div>
+              <div class="total-row">
+                <span>Total Price:</span>
+                <strong id="totalPrice">€0.00</strong>
+              </div>
+            </div>
+
+            <form id="orderForm" class="form">
+              <h3>Delivery Information</h3>
+              
+              <div class="form-group">
+                <label for="customerName">Your Name *</label>
+                <input type="text" id="customerName" name="customerName" required 
+                       placeholder="John Doe">
+              </div>
+
+              <div class="form-group">
+                <label for="customerAddress">Delivery Address *</label>
+                <textarea id="customerAddress" name="customerAddress" rows="2" required 
+                          placeholder="Street, Number, Apartment..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label for="customerPhone">Phone Number *</label>
+                <input type="tel" id="customerPhone" name="customerPhone" required 
+                       placeholder="+34 123 456 789">
+              </div>
+
+              <div class="form-group">
+                <label for="specialInstructions">Special Instructions (optional)</label>
+                <textarea id="specialInstructions" name="specialInstructions" rows="2" 
+                          placeholder="Any special requests..."></textarea>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-large">
+                  Place Order
+                </button>
+                <button type="button" id="clearOrderBtn" class="btn btn-secondary btn-large">
+                  Clear Order
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Confirmation Message -->
+        <div id="confirmationMessage" class="confirmation-box" style="display: none;">
+          <div class="confirmation-content">
+            <div class="confirmation-icon">✅</div>
+            <h2>Order Confirmed!</h2>
+            <p>Thank you for your order, <strong id="confirmName"></strong>!</p>
+            
+            <div class="confirmation-details">
+              <div class="detail-row">
+                <span>Order Total:</span>
+                <strong id="confirmTotal"></strong>
+              </div>
+              <div class="detail-row">
+                <span>Items Ordered:</span>
+                <strong id="confirmItems"></strong>
+              </div>
+              <div class="detail-row">
+                <span>Estimated Delivery Time:</span>
+                <strong id="confirmDeliveryTime"></strong>
+              </div>
+              <div class="detail-row">
+                <span>Delivery Address:</span>
+                <strong id="confirmAddress"></strong>
+              </div>
+            </div>
+
+            <button id="newOrderBtn" class="btn btn-primary btn-large">
+              Place Another Order
+            </button>
+          </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="message message-error" style="display: none;">
+          <strong>Error!</strong> <span id="errorText">Something went wrong. Please try again.</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>&copy; 2025 FoodHub - Cloud Computing Project | IE University</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

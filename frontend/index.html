@@ -1,13 +1,79 @@
-cat > index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Cloud Computing Project</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FoodHub - Multi-Restaurant Food Ordering</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>Cloud Computing Project</h1>
-  <p>Placeholder page for my Cloud Computing GitHub Pages site.</p>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-brand">
+        <h1>🍽️ FoodHub</h1>
+      </div>
+      <div class="nav-links">
+        <a href="index.html" class="nav-link active">Home</a>
+        <a href="restaurant.html" class="nav-link">For Restaurants</a>
+        <a href="customer.html" class="nav-link">Order Food</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <h1 class="hero-title">Welcome to FoodHub</h1>
+        <p class="hero-subtitle">Your Serverless Multi-Restaurant Food Ordering Platform</p>
+        
+        <div class="hero-cards">
+          <div class="card">
+            <div class="card-icon">🍕</div>
+            <h3>For Restaurants</h3>
+            <p>Register your restaurant and publish your delicious meals to reach more customers</p>
+            <a href="restaurant.html" class="btn btn-primary">Register Meals</a>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">🛒</div>
+            <h3>For Customers</h3>
+            <p>Browse meals from restaurants in your area and place orders instantly</p>
+            <a href="customer.html" class="btn btn-primary">Order Now</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="container">
+        <h2>How It Works</h2>
+        <div class="feature-grid">
+          <div class="feature-item">
+            <div class="feature-icon">📍</div>
+            <h3>Area-Based Delivery</h3>
+            <p>Choose your delivery area: Central, North, South, East, or West</p>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">⚡</div>
+            <h3>Serverless Backend</h3>
+            <p>Powered by Azure Functions and Azure Storage for reliable service</p>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">🎯</div>
+            <h3>Simple Ordering</h3>
+            <p>Select multiple meals and get instant confirmation with estimated delivery time</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>&copy; 2025 FoodHub - Cloud Computing Project | IE University</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
 </body>
 </html>
-EOF
