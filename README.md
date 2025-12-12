@@ -5,10 +5,10 @@ Course: CLOUD COMPUTING (BCSAI2025N-CSAI.2.M.A_C2_493749)
 
 ## Group Members
 
-- Olivia Flores 
+- Olivia Espiñeira Flores 
 - Matteo Giorgetti  
-- Laura Rodriguez  
-- Lara Perez  
+- Laura González Rodriguez  
+- Lara Iglesias Perez  
 - Habib Rahal  
 - Kathy Vo  
 
