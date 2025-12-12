@@ -1,93 +1,57 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Browse Meals - ByteBite</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ByteBite - Customer Portal</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <nav class="navbar">
-        <div class="nav-container">
-            <h1 class="logo">🍽️ ByteBite</h1>
-            <div class="nav-links">
-                <a href="index.html">Home</a>
-                <a href="restaurant.html">Restaurant</a>
-                <a href="customer.html" class="active">Customer</a>
-            </div>
+  <div class="container">
+    <header>
+      <h1>🍕 ByteBite - Order Food</h1>
+      <nav>
+        <a href="index.html">Home</a>
+        <a href="restaurant.html">Restaurant Portal</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="form-section">
+        <h2>Select Your Delivery Area</h2>
+        <div class="form-group">
+          <label for="customerArea">Delivery Area:</label>
+          <select id="customerArea">
+            <option value="">Choose your area</option>
+            <option value="North">North</option>
+            <option value="Central">Central</option>
+            <option value="South">South</option>
+          </select>
+          <button onclick="loadMeals()" class="btn-primary">Browse Meals</button>
         </div>
-    </nav>
+      </section>
 
-    <div class="container">
-        <div class="form-card">
-            <h2>Browse Meals</h2>
-            <p class="subtitle">Select your delivery area to see available meals</p>
-            
-            <div class="form-group">
-                <label for="areaSelect">Select Delivery Area *</label>
-                <select id="areaSelect" name="areaSelect">
-                    <option value="">Choose an area</option>
-                    <option value="North">North</option>
-                    <option value="Central">Central</option>
-                    <option value="South">South</option>
-                </select>
-                <button type="button" class="btn-primary" id="loadMealsBtn" style="margin-top: 1rem;">
-                    Load Meals
-                </button>
-            </div>
-        </div>
+      <section id="mealsSection" class="meals-section" style="display: none;">
+        <h2>Available Meals</h2>
+        <div id="mealsList" class="meals-grid"></div>
+      </section>
 
-        <div id="mealsContainer" class="meals-container" style="display: none;">
-            <h2>Available Meals</h2>
-            <div id="mealsList"></div>
-        </div>
-
-        <div id="message" class="message"></div>
-    </div>
-
-    <script>
-        // This will be updated when you create the GetMealsByArea function
-        const GET_MEALS_FUNCTION_URL = 'YOUR_GET_MEALS_FUNCTION_URL_HERE';
+      <section id="orderSection" class="form-section" style="display: none;">
+        <h2>Your Order</h2>
+        <div id="selectedMeals" class="selected-meals"></div>
         
-        document.getElementById('loadMealsBtn').addEventListener('click', async function() {
-            const area = document.getElementById('areaSelect').value;
-            const messageDiv = document.getElementById('message');
-            const mealsContainer = document.getElementById('mealsContainer');
-            const mealsList = document.getElementById('mealsList');
-            
-            if (!area) {
-                showMessage('Please select a delivery area first.', 'error');
-                return;
-            }
-            
-            // TODO: Call GetMealsByArea Azure Function when it's ready
-            showMessage('Meal browsing feature coming soon! First, we need to create the GetMealsByArea Azure Function.', 'error');
-            
-            // Placeholder for future implementation
-            /*
-            try {
-                const response = await fetch(`${GET_MEALS_FUNCTION_URL}?area=${area}&code=${FUNCTION_KEY}`);
-                const meals = await response.json();
-                
-                if (meals && meals.length > 0) {
-                    displayMeals(meals);
-                    mealsContainer.style.display = 'block';
-                } else {
-                    showMessage('No meals found in this area.', 'error');
-                }
-            } catch (error) {
-                showMessage(`Error: ${error.message}`, 'error');
-            }
-            */
-        });
-        
-        function showMessage(text, type) {
-            const messageDiv = document.getElementById('message');
-            messageDiv.textContent = text;
-            messageDiv.className = `message ${type}`;
-            messageDiv.style.display = 'block';
-        }
-    </script>
+        <div class="form-group">
+          <label for="deliveryAddress">Delivery Address:</label>
+          <textarea id="deliveryAddress" rows="2" required></textarea>
+        </div>
+
+        <button onclick="submitOrder()" class="btn-success">Place Order</button>
+      </section>
+
+      <div id="message" class="message"></div>
+    </main>
+  </div>
+
+  <script src="customer.js"></script>
 </body>
 </html>
-

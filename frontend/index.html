@@ -1,65 +1,55 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ByteBite - Serverless Food Ordering Platform</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ByteBite - Food Delivery Platform</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <nav class="navbar">
-        <div class="nav-container">
-            <h1 class="logo">🍽️ ByteBite</h1>
-            <div class="nav-links">
-                <a href="index.html" class="active">Home</a>
-                <a href="restaurant.html">Restaurant</a>
-                <a href="customer.html">Customer</a>
-            </div>
-        </div>
-    </nav>
+  <div class="container">
+    <header class="hero">
+      <h1>🍔 ByteBite</h1>
+      <p class="tagline">Your Serverless Multi-Restaurant Food Ordering Platform</p>
+    </header>
 
-    <div class="hero">
-        <div class="hero-content">
-            <h1>Welcome to ByteBite</h1>
-            <p class="hero-subtitle">Your Serverless Multi-Restaurant Food Ordering Platform</p>
-            <p class="hero-description">
-                Order delicious meals from restaurants across North, Central, and South areas.
-                Fast, reliable, and built on Azure cloud infrastructure.
-            </p>
-            
-            <div class="cta-buttons">
-                <a href="restaurant.html" class="btn btn-primary">I'm a Restaurant</a>
-                <a href="customer.html" class="btn btn-secondary">I'm a Customer</a>
-            </div>
+    <main class="landing">
+      <section class="portal-cards">
+        <div class="card">
+          <h2>🍽️ Restaurant Owner?</h2>
+          <p>Register your delicious meals and reach customers in your delivery area.</p>
+          <a href="restaurant.html" class="btn-primary">Go to Restaurant Portal</a>
         </div>
-    </div>
 
-    <div class="container">
-        <div class="features">
-            <div class="feature-card">
-                <div class="feature-icon">🏪</div>
-                <h3>For Restaurants</h3>
-                <p>Register your restaurant and add meals to reach customers in your delivery area.</p>
-                <a href="restaurant.html" class="feature-link">Get Started →</a>
-            </div>
-            
-            <div class="feature-card">
-                <div class="feature-icon">🛒</div>
-                <h3>For Customers</h3>
-                <p>Browse meals from restaurants in your area and place orders with estimated delivery times.</p>
-                <a href="customer.html" class="feature-card">Browse Meals →</a>
-            </div>
-            
-            <div class="feature-card">
-                <div class="feature-icon">☁️</div>
-                <h3>Cloud Powered</h3>
-                <p>Built on Azure Functions and Table Storage for scalable, serverless performance.</p>
-            </div>
+        <div class="card">
+          <h2>🍕 Hungry Customer?</h2>
+          <p>Browse meals from local restaurants and place your order in seconds.</p>
+          <a href="customer.html" class="btn-primary">Go to Customer Portal</a>
         </div>
-    </div>
+      </section>
+
+      <section class="features">
+        <h2>How It Works</h2>
+        <div class="features-grid">
+          <div class="feature">
+            <h3>📍 Area-Based Delivery</h3>
+            <p>Choose from North, Central, or South delivery areas</p>
+          </div>
+          <div class="feature">
+            <h3>⚡ Serverless Architecture</h3>
+            <p>Built with Azure Functions and Table Storage</p>
+          </div>
+          <div class="feature">
+            <h3>⏱️ Real-Time Estimates</h3>
+            <p>Get accurate delivery time calculations instantly</p>
+          </div>
+        </div>
+      </section>
+    </main>
 
     <footer>
-        <p>&copy; 2025 ByteBite - Cloud Computing Project | IE University</p>
+      <p>Cloud Computing Project - IE University | Fall 2025</p>
     </footer>
+  </div>
 </body>
 </html>

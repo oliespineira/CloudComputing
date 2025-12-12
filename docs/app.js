@@ -2,13 +2,17 @@
 // GLOBAL CONFIGURATION
 // ========================================
 
-// Azure Functions endpoints (to be updated in Milestone 4)
+// Azure Functions endpoints
+// For local development: http://localhost:7071/api
+// For production: Update with your deployed function URL
+const API_BASE_URL = 'http://localhost:7071/api';
+
 const API_CONFIG = {
-  baseUrl: '', // Will be set when Azure Functions are deployed
+  baseUrl: API_BASE_URL,
   endpoints: {
-    getMeals: '/api/meals',
-    createMeal: '/api/meals/create',
-    createOrder: '/api/orders/create'
+    registerMeal: `${API_BASE_URL}/RegisterMeal`,
+    getMealsByArea: `${API_BASE_URL}/GetMealsByArea`,
+    submitOrder: `${API_BASE_URL}/SubmitOrder`
   }
 };
 
@@ -125,12 +129,27 @@ if (document.getElementById('restaurantForm')) {
     }
 
     try {
-      // In Milestone 3, we simulate success
-      // In Milestone 4, this will call Azure Functions
-      console.log('Meal data to be submitted:', formData);
+      // Call Azure Function to register meal
+      const response = await fetch(API_CONFIG.endpoints.registerMeal, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          restaurantName: formData.restaurantName,
+          dishName: formData.dishName,
+          description: formData.description,
+          price: formData.price,
+          prepTime: formData.prepTime,
+          area: formData.deliveryArea
+        })
+      });
 
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to register meal');
+      }
 
       // Show success message
       successMessage.style.display = 'block';
@@ -146,7 +165,7 @@ if (document.getElementById('restaurantForm')) {
 
     } catch (error) {
       console.error('Error submitting meal:', error);
-      errorText.textContent = 'Failed to register meal. Please try again.';
+      errorText.textContent = error.message || 'Failed to register meal. Please try again.';
       errorMessage.style.display = 'block';
     }
   });
@@ -159,6 +178,7 @@ if (document.getElementById('restaurantForm')) {
 if (document.getElementById('areaForm')) {
   let selectedMeals = [];
   let currentArea = '';
+  let currentMeals = []; // Store fetched meals for addMeal function
 
   const areaForm = document.getElementById('areaForm');
   const loadingState = document.getElementById('loadingState');
@@ -189,14 +209,28 @@ if (document.getElementById('areaForm')) {
     errorMessage.style.display = 'none';
 
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // Call Azure Function to get meals by area
+      const response = await fetch(`${API_CONFIG.endpoints.getMealsByArea}?area=${encodeURIComponent(area)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
 
-      // In Milestone 3, use mock data
-      // In Milestone 4, this will call Azure Functions
-      const meals = MOCK_MEALS.filter(meal => meal.area === area);
+      if (!response.ok) {
+        throw new Error('Failed to fetch meals');
+      }
 
-      displayMeals(meals);
+      const meals = await response.json();
+      
+      // Add placeholder image URLs for meals without images
+      const mealsWithImages = meals.map(meal => ({
+        ...meal,
+        imageUrl: `https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&sig=${meal.mealId}`
+      }));
+
+      currentMeals = mealsWithImages; // Store for addMeal function
+      displayMeals(mealsWithImages);
 
     } catch (error) {
       console.error('Error fetching meals:', error);
@@ -244,7 +278,9 @@ if (document.getElementById('areaForm')) {
 
   // Add meal to order
   window.addMeal = function(index) {
-    const meal = MOCK_MEALS.filter(m => m.area === currentArea)[index];
+    const meal = currentMeals[index];
+    if (!meal) return;
+    
     const existingMeal = selectedMeals.find(m => m.dishName === meal.dishName);
 
     if (existingMeal) {
@@ -331,23 +367,39 @@ if (document.getElementById('areaForm')) {
     };
 
     try {
-      // In Milestone 3, simulate order submission
-      // In Milestone 4, this will call Azure Functions
-      console.log('Order data to be submitted:', orderData);
+      // Call Azure Function to submit order
+      const response = await fetch(API_CONFIG.endpoints.submitOrder, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          customerName: orderData.customerName,
+          customerAddress: orderData.customerAddress,
+          customerPhone: orderData.customerPhone,
+          deliveryArea: orderData.deliveryArea,
+          meals: selectedMeals.map(m => ({
+            dishName: m.dishName,
+            restaurantName: m.restaurantName,
+            price: m.price,
+            prepTime: m.prepTime,
+            quantity: m.quantity
+          }))
+        })
+      });
 
-      // Calculate estimated delivery time
-      const maxPrepTime = Math.max(...selectedMeals.map(m => m.prepTime));
-      const estimatedTime = maxPrepTime + 10 + 15; // prep + pickup + delivery
+      const result = await response.json();
 
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to submit order');
+      }
 
-      // Show confirmation
-      displayConfirmation(orderData, estimatedTime);
+      // Show confirmation with data from server
+      displayConfirmation(orderData, result.estimatedDeliveryTime);
 
     } catch (error) {
       console.error('Error submitting order:', error);
-      errorText.textContent = 'Failed to place order. Please try again.';
+      errorText.textContent = error.message || 'Failed to place order. Please try again.';
       errorMessage.style.display = 'block';
     }
   });
