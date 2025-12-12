@@ -13,10 +13,21 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 # RESTAURANT FUNCTIONS
 # ========================================
 
-@app.route(route="RegisterRestaurant", methods=["POST", "GET"])
+@app.route(route="RegisterRestaurant", methods=["POST", "GET", "OPTIONS"])
 def register_restaurant(req: func.HttpRequest) -> func.HttpResponse:
     """Register a new restaurant in the Restaurants table"""
     logging.info('RegisterRestaurant function triggered')
+
+    # Handle CORS preflight
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+        )
 
     try:
         # Accept both query params (GET) and JSON body (POST)
@@ -89,9 +100,20 @@ def register_restaurant(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
-@app.route(route="RegisterMeal", methods=["POST"])
+@app.route(route="RegisterMeal", methods=["POST", "OPTIONS"])
 def register_meal(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('RegisterMeal function triggered')
+
+    # Handle CORS preflight
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+        )
 
     try:
         # get JSON body
@@ -101,7 +123,8 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
             return func.HttpResponse(
                 json.dumps({"error": "Request body must be valid JSON"}),
                 status_code=400,
-                mimetype="application/json"
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
             )
 
         restaurant_name = req_body.get('restaurantName')
@@ -116,7 +139,8 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
             return func.HttpResponse(
                 json.dumps({"error": "Missing required fields"}),
                 status_code=400,
-                mimetype="application/json"
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
             )
 
         price = float(price)
@@ -129,7 +153,8 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
             return func.HttpResponse(
                 json.dumps({"error": 'Server configuration error'}),
                 status_code=500,
-                mimetype="application/json"
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
             )
 
         client = TableClient.from_connection_string(
@@ -156,7 +181,8 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
                 "mealId": entity["RowKey"]
             }),
             status_code=200,
-            mimetype="application/json"
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
         )
 
     except ValueError as e:
@@ -164,14 +190,16 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": "Invalid data format"}),
             status_code=400,
-            mimetype="application/json"
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
         )
     except Exception as e:
         logging.error(f"Error: {str(e)}")
         return func.HttpResponse(
             json.dumps({"error": "Internal server error"}),
             status_code=500,
-            mimetype="application/json"
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
         )
 
 
@@ -179,10 +207,21 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
 # CUSTOMER FUNCTIONS
 # ========================================
 
-@app.route(route="GetMealsByArea", methods=["GET", "POST"])
+@app.route(route="GetMealsByArea", methods=["GET", "POST", "OPTIONS"])
 def get_meals_by_area(req: func.HttpRequest) -> func.HttpResponse:
     """Get all meals available in a specific delivery area"""
     logging.info('GetMealsByArea function triggered')
+
+    # Handle CORS preflight
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+        )
 
     try:
         # Get area from query params or JSON body
@@ -253,10 +292,21 @@ def get_meals_by_area(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
-@app.route(route="SubmitOrder", methods=["POST"])
+@app.route(route="SubmitOrder", methods=["POST", "OPTIONS"])
 def submit_order(req: func.HttpRequest) -> func.HttpResponse:
     """Submit a customer order and calculate delivery time"""
     logging.info('SubmitOrder function triggered')
+
+    # Handle CORS preflight
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+        )
 
     try:
         # Get JSON body
