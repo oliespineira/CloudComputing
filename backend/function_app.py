@@ -3,78 +3,71 @@ import json
 import logging
 import uuid
 import os
-from azure.data.tables import TableClient
+import bcrypt
+import jwt
+from azure.core.exceptions import ResourceNotFoundError
+from azure.data.tables import TableClient, TableServiceClient
 from datetime import datetime, timedelta
 from azure.storage.queue import QueueClient
 import hashlib
-import bcrypt
-import jwt
 
 
 # Azure Functions app - all HTTP functions are defined here
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-# ========================================
-# AUTHENTICATION HELPERS
-# ========================================
+VALID_ROLES = {"customer", "restaurant", "driver"}
 
-def get_users_table():
-    """Get Users table client"""
+
+def _get_storage_connection_string() -> str:
     connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-    return TableClient.from_connection_string(
-        conn_str=connection_string,
-        table_name="Users"
-    )
+    if not connection_string:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+    return connection_string
 
-def issue_token(email: str, role: str, name: str) -> str:
-    """Generate JWT token for authenticated user"""
-    secret = os.getenv("JWT_SECRET", "your-secret-key-change-this-in-production")
-    issuer = os.getenv("JWT_ISSUER", "bytebite-api")
-    audience = os.getenv("JWT_AUDIENCE", issuer)
-    expires_minutes = int(os.getenv("JWT_EXPIRES_MINUTES", "60"))
-    
-    now = datetime.utcnow()
+
+def _get_users_table_client(connection_string: str) -> TableClient:
+    service_client = TableServiceClient.from_connection_string(conn_str=connection_string)
+    try:
+        service_client.create_table_if_not_exists(table_name="Users")
+    except Exception as exc:
+        logging.warning(f"Unable to ensure Users table exists: {exc}")
+    return service_client.get_table_client(table_name="Users")
+
+
+def _hash_password(raw_password: str) -> str:
+    return bcrypt.hashpw(raw_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_password(raw_password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(raw_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def _generate_token(email: str, role: str, name: str) -> str:
+    secret = os.getenv("JWT_SECRET")
+    if not secret:
+        raise RuntimeError("JWT_SECRET not configured")
+
     payload = {
         "sub": email,
         "role": role,
         "name": name,
-        "iat": now,
-        "exp": now + timedelta(minutes=expires_minutes),
-        "iss": issuer,
-        "aud": audience,
+        "exp": datetime.utcnow() + timedelta(hours=24)
     }
     return jwt.encode(payload, secret, algorithm="HS256")
 
-def verify_token(token: str) -> dict:
-    """Verify JWT token and return payload"""
-    secret = os.getenv("JWT_SECRET", "your-secret-key-change-this-in-production")
-    issuer = os.getenv("JWT_ISSUER", "bytebite-api")
-    audience = os.getenv("JWT_AUDIENCE", issuer)
-    
-    try:
-        payload = jwt.decode(
-            token,
-            secret,
-            algorithms=["HS256"],
-            issuer=issuer,
-            audience=audience
-        )
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise ValueError("Token expired")
-    except jwt.InvalidTokenError:
-        raise ValueError("Invalid token")
+# ========================================
+# AUTH FUNCTIONS
+# ========================================
 
-# ========================================
-# AUTHENTICATION FUNCTIONS
-# ========================================
 
 @app.route(route="signup", methods=["POST", "OPTIONS"])
 def signup(req: func.HttpRequest) -> func.HttpResponse:
-    """Register a new user account"""
-    logging.info('Signup function triggered')
-    
-    # Handle CORS preflight
+    """Create a user account and return a JWT."""
+    logging.info("signup function triggered")
+
     if req.method == "OPTIONS":
         return func.HttpResponse(
             status_code=204,
@@ -84,122 +77,111 @@ def signup(req: func.HttpRequest) -> func.HttpResponse:
                 "Access-Control-Allow-Headers": "Content-Type",
             },
         )
-    
+
     try:
-        body = req.get_json()
-    except ValueError:
-        return func.HttpResponse(
-            json.dumps({"error": "Invalid JSON"}),
-            status_code=400,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-    
-    # Extract and validate inputs
-    email = (body.get("email") or "").strip().lower()
-    password = body.get("password") or ""
-    role = (body.get("role") or "").strip().lower()
-    name = (body.get("name") or "").strip()
-    phone = (body.get("phone") or "").strip()
-    
-    # Validation
-    if role not in ("customer", "restaurant", "driver"):
-        return func.HttpResponse(
-            json.dumps({"error": "Invalid role. Must be customer, restaurant, or driver"}),
-            status_code=400,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-    
-    if not email or not password or not name:
-        return func.HttpResponse(
-            json.dumps({"error": "Email, password, and name are required"}),
-            status_code=400,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-    
-    if len(password) < 8:
-        return func.HttpResponse(
-            json.dumps({"error": "Password must be at least 8 characters"}),
-            status_code=400,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-    
-    try:
-        table = get_users_table()
-        
-        # Check if user already exists
         try:
-            existing = table.get_entity(partition_key=role, row_key=email)
+            body = req.get_json()
+        except ValueError:
             return func.HttpResponse(
-                json.dumps({"error": "User already exists"}),
+                json.dumps({"error": "Request body must be valid JSON"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        name = (body.get("name") or "").strip()
+        email = (body.get("email") or "").strip().lower()
+        password = body.get("password") or ""
+        role = (body.get("role") or "").strip().lower()
+        phone = (body.get("phone") or "").strip()
+
+        if not all([name, email, password, role]):
+            return func.HttpResponse(
+                json.dumps({"error": "name, email, password, and role are required"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        if role not in VALID_ROLES:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid role"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        connection_string = _get_storage_connection_string()
+        users_client = _get_users_table_client(connection_string)
+
+        try:
+            users_client.get_entity(partition_key=role, row_key=email)
+            return func.HttpResponse(
+                json.dumps({"error": "Account already exists"}),
                 status_code=409,
                 mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
+                headers={"Access-Control-Allow-Origin": "*"},
             )
-        except Exception:
-            pass  # User doesn't exist, continue
-        
-        # Hash password
-        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        
-        # Create user entity
+        except ResourceNotFoundError:
+            pass
+
+        password_hash = _hash_password(password)
+
         entity = {
             "PartitionKey": role,
             "RowKey": email,
-            "PasswordHash": password_hash,
-            "Role": role,
             "Name": name,
+            "Email": email,
             "Phone": phone,
-            "Status": "active",
-            "CreatedAt": datetime.utcnow().isoformat()
+            "Role": role,
+            "PasswordHash": password_hash,
+            "CreatedAt": datetime.utcnow().isoformat(),
         }
-        
-        table.create_entity(entity=entity)
-        logging.info(f"User created: {email} with role {role}")
-        
-        # Generate token
-        token = issue_token(email, role, name)
-        
-        # Decode to get expiry
-        decoded = jwt.decode(
-            token,
-            os.getenv("JWT_SECRET", "your-secret-key-change-this-in-production"),
-            algorithms=["HS256"],
-            options={"verify_signature": False}
-        )
-        expires_at = datetime.utcfromtimestamp(decoded["exp"]).isoformat() + "Z"
-        
+
+        try:
+            users_client.create_entity(entity=entity)
+        except Exception as exc:
+            logging.error(f"Failed to create user entity: {exc}")
+            return func.HttpResponse(
+                json.dumps({"error": "Failed to create account"}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        try:
+            token = _generate_token(email=email, role=role, name=name)
+        except Exception as exc:
+            logging.error(f"Failed to generate token: {exc}")
+            return func.HttpResponse(
+                json.dumps({"error": "Server configuration error"}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
         return func.HttpResponse(
-            json.dumps({
-                "token": token,
-                "role": role,
-                "name": name,
-                "expiresAt": expires_at
-            }),
-            status_code=200,
+            json.dumps({"token": token, "role": role, "name": name}),
+            status_code=201,
             mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
+            headers={"Access-Control-Allow-Origin": "*"},
         )
-        
-    except Exception as e:
-        logging.error(f"Signup error: {str(e)}")
+
+    except Exception as exc:
+        logging.error(f"Unexpected error in signup: {exc}")
         return func.HttpResponse(
-            json.dumps({"error": f"Internal server error: {str(e)}"}),
+            json.dumps({"error": "Internal server error"}),
             status_code=500,
             mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
+            headers={"Access-Control-Allow-Origin": "*"},
         )
 
 
 @app.route(route="login", methods=["POST", "OPTIONS"])
 def login(req: func.HttpRequest) -> func.HttpResponse:
-    """Authenticate user and return JWT token"""
-    logging.info('Login function triggered')
-    
-    # Handle CORS preflight
+    """Validate credentials and return a JWT."""
+    logging.info("login function triggered")
+
     if req.method == "OPTIONS":
         return func.HttpResponse(
             status_code=204,
@@ -209,106 +191,94 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
                 "Access-Control-Allow-Headers": "Content-Type",
             },
         )
-    
+
     try:
-        body = req.get_json()
-    except ValueError:
-        return func.HttpResponse(
-            json.dumps({"error": "Invalid JSON"}),
-            status_code=400,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-    
-    # Extract inputs
-    email = (body.get("email") or "").strip().lower()
-    password = body.get("password") or ""
-    role = (body.get("role") or "").strip().lower()
-    
-    # Validation
-    if role not in ("customer", "restaurant", "driver"):
-        return func.HttpResponse(
-            json.dumps({"error": "Invalid role"}),
-            status_code=400,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-    
-    if not email or not password:
-        return func.HttpResponse(
-            json.dumps({"error": "Email and password are required"}),
-            status_code=400,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-    
-    try:
-        table = get_users_table()
-        
-        # Get user
         try:
-            user = table.get_entity(partition_key=role, row_key=email)
-        except Exception:
+            body = req.get_json()
+        except ValueError:
+            return func.HttpResponse(
+                json.dumps({"error": "Request body must be valid JSON"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        email = (body.get("email") or "").strip().lower()
+        password = body.get("password") or ""
+        role = (body.get("role") or "").strip().lower()
+
+        if not all([email, password, role]):
+            return func.HttpResponse(
+                json.dumps({"error": "email, password, and role are required"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        if role not in VALID_ROLES:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid role"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        connection_string = _get_storage_connection_string()
+        users_client = _get_users_table_client(connection_string)
+
+        try:
+            user = users_client.get_entity(partition_key=role, row_key=email)
+        except ResourceNotFoundError:
             return func.HttpResponse(
                 json.dumps({"error": "Invalid credentials"}),
                 status_code=401,
                 mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
+                headers={"Access-Control-Allow-Origin": "*"},
             )
-        
-        # Check status
-        if user.get("Status", "active") != "active":
+        except Exception as exc:
+            logging.error(f"Failed to fetch user: {exc}")
             return func.HttpResponse(
-                json.dumps({"error": "Account suspended"}),
-                status_code=403,
+                json.dumps({"error": "Internal server error"}),
+                status_code=500,
                 mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
+                headers={"Access-Control-Allow-Origin": "*"},
             )
-        
-        # Verify password
-        stored_hash = user.get("PasswordHash")
-        if not stored_hash or not bcrypt.checkpw(password.encode(), stored_hash.encode()):
+
+        if not _verify_password(password, user.get("PasswordHash", "")):
             return func.HttpResponse(
                 json.dumps({"error": "Invalid credentials"}),
                 status_code=401,
                 mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
+                headers={"Access-Control-Allow-Origin": "*"},
             )
-        
-        # Generate token
+
         name = user.get("Name", "")
-        token = issue_token(email, role, name)
-        
-        # Decode to get expiry
-        decoded = jwt.decode(
-            token,
-            os.getenv("JWT_SECRET", "your-secret-key-change-this-in-production"),
-            algorithms=["HS256"],
-            options={"verify_signature": False}
-        )
-        expires_at = datetime.utcfromtimestamp(decoded["exp"]).isoformat() + "Z"
-        
-        logging.info(f"User logged in: {email} with role {role}")
-        
+
+        try:
+            token = _generate_token(email=email, role=role, name=name)
+        except Exception as exc:
+            logging.error(f"Failed to generate token: {exc}")
+            return func.HttpResponse(
+                json.dumps({"error": "Server configuration error"}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
         return func.HttpResponse(
-            json.dumps({
-                "token": token,
-                "role": role,
-                "name": name,
-                "expiresAt": expires_at
-            }),
+            json.dumps({"token": token, "role": role, "name": name}),
             status_code=200,
             mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
+            headers={"Access-Control-Allow-Origin": "*"},
         )
-        
-    except Exception as e:
-        logging.error(f"Login error: {str(e)}")
+
+    except Exception as exc:
+        logging.error(f"Unexpected error in login: {exc}")
         return func.HttpResponse(
-            json.dumps({"error": f"Internal server error: {str(e)}"}),
+            json.dumps({"error": "Internal server error"}),
             status_code=500,
             mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
+            headers={"Access-Control-Allow-Origin": "*"},
         )
 
 # ========================================
@@ -1072,5 +1042,4 @@ def send_delivery_notification(delivery_id: str, order_id: str, area: str):
         logging.error(f"Error sending queue message: {str(e)}")
 
         # Don't fail the order if queue fails - delivery still created in table
-
 
