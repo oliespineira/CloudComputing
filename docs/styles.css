@@ -66,6 +66,34 @@ main {
   padding: 0 var(--spacing-md);
 }
 
+.nav-subtitle {
+  color: var(--text-light);
+  font-size: 0.9rem;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--primary-color);
+  font-size: 0.85rem;
+}
+
+.section-heading {
+  max-width: 720px;
+  margin: 0 auto var(--spacing-lg) auto;
+  text-align: center;
+}
+
+.section-heading h2 {
+  font-size: 2rem;
+  margin: var(--spacing-xs) 0;
+}
+
+.section-subtitle {
+  color: var(--text-light);
+}
+
 /* ========================================
    NAVIGATION BAR
    ======================================== */
@@ -121,10 +149,71 @@ main {
    ======================================== */
 
 .hero {
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-  color: var(--white);
+  background-color: var(--white);
+  color: var(--text-dark);
   padding: var(--spacing-xl) 0;
   text-align: center;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.hero-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.hero-text {
+  text-align: left;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+}
+
+.hero-visual {
+  text-align: left;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  box-shadow: var(--shadow-md);
+  background: var(--white);
+}
+
+.hero-image-frame {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.hero-image-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.35rem 0.65rem;
+  background-color: var(--background);
+  color: var(--text-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 .hero-title {
@@ -178,6 +267,24 @@ main {
 .card p {
   color: var(--text-light);
   margin-bottom: var(--spacing-md);
+}
+
+.highlight-card {
+  background: var(--white);
+  border: 1px solid var(--border-color);
+  color: var(--text-dark);
+}
+
+.meta-list {
+  list-style: none;
+  display: grid;
+  gap: var(--spacing-xs);
+  color: inherit;
+  margin-top: var(--spacing-sm);
+}
+
+.meta-list li strong {
+  color: inherit;
 }
 
 /* ========================================
@@ -268,25 +375,88 @@ main {
   color: var(--text-light);
 }
 
+.portal-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--spacing-md);
+  margin: var(--spacing-xl) auto;
+}
+
+.portal-card {
+  text-align: left;
+  align-self: stretch;
+}
+
+.story-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--spacing-md);
+  margin: var(--spacing-xl) 0;
+}
+
+.story-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  background: var(--white);
+  box-shadow: var(--shadow-sm);
+}
+
+.story-card h4 {
+  margin-bottom: var(--spacing-xs);
+  color: var(--text-dark);
+}
+
+.story-meta {
+  color: var(--text-light);
+  font-size: 0.95rem;
+  margin-bottom: var(--spacing-sm);
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--spacing-md);
+  margin: var(--spacing-xl) 0;
+}
+
+.info-card {
+  text-align: left;
+}
+
+.feature-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--background);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin-bottom: var(--spacing-sm);
+}
+
 /* ========================================
    PAGE HEADER
    ======================================== */
 
 .page-header {
-  background: linear-gradient(135deg, var(--secondary-color) 0%, var(--primary-color) 100%);
-  color: var(--white);
+  background: var(--background);
+  color: var(--text-dark);
   padding: var(--spacing-xl) 0;
   text-align: center;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .page-header h1 {
-  font-size: 2.5rem;
+  font-size: 2.25rem;
   margin-bottom: var(--spacing-xs);
 }
 
 .page-header p {
-  font-size: 1.1rem;
-  opacity: 0.9;
+  font-size: 1.05rem;
+  color: var(--text-light);
 }
 
 /* ========================================
