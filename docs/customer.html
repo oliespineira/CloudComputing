@@ -63,72 +63,75 @@
       <p>Loading meals for your area...</p>
     </div>
 
-    <section id="mealsContainer" class="meals-section" style="display: none;">
-      <div class="section-heading">
-        <p class="eyebrow">Step 2</p>
-        <h2>Available meals in <span id="selectedArea"></span></h2>
-        <p class="section-subtitle">Select dishes to build your order.</p>
-      </div>
-      <div id="mealsGrid" class="meals-grid"></div>
-      <div id="noMealsMessage" class="message message-error" style="display: none;">
-        No meals available in this area.
-      </div>
-    </section>
-
-    <section id="orderFormContainer" class="form-section" style="display: none;">
-      <div class="form-container order-summary-section">
-        <div class="section-heading">
-          <p class="eyebrow">Step 3</p>
-          <h2>Your order</h2>
-          <p class="section-subtitle">Review the cart, then add delivery details.</p>
-        </div>
-
-        <div id="selectedMealsContainer" class="selected-meals"></div>
-
-        <div class="order-total">
-          <div class="total-row">
-            <span>Total items</span>
-            <strong><span id="totalItems">0</span></strong>
+    <section class="shopping-layout">
+      <div class="meals-column">
+        <section id="mealsContainer" class="meals-section" style="display: none;">
+          <div class="section-heading">
+            <p class="eyebrow">Step 2</p>
+            <h2>Available meals in <span id="selectedArea"></span></h2>
+            <p class="section-subtitle">Select dishes to build your order.</p>
           </div>
-          <div class="total-row">
-            <span>Total price</span>
-            <strong><span id="totalPrice">€0.00</span></strong>
+          <div id="mealsGrid" class="meals-grid"></div>
+          <div id="noMealsMessage" class="message message-error" style="display: none;">
+            No meals available in this area.
           </div>
-        </div>
+        </section>
+      </div>
 
-        <form id="orderForm" class="form">
-          <div class="form-row">
+      <aside class="order-column">
+        <section id="orderFormContainer" class="order-panel" style="display: none;">
+          <div class="section-heading">
+            <p class="eyebrow">Step 3</p>
+            <h2>Your order</h2>
+            <p class="section-subtitle">Review the cart, then add delivery details.</p>
+          </div>
+
+          <div id="selectedMealsContainer" class="selected-meals"></div>
+
+          <div class="order-total">
+            <div class="total-row">
+              <span>Total items</span>
+              <strong><span id="totalItems">0</span></strong>
+            </div>
+            <div class="total-row">
+              <span>Total price</span>
+              <strong><span id="totalPrice">€0.00</span></strong>
+            </div>
+          </div>
+
+          <form id="orderForm" class="form">
             <div class="form-group">
               <label for="customerName">Your name</label>
               <input type="text" id="customerName" required>
             </div>
+
             <div class="form-group">
               <label for="customerPhone">Phone number</label>
               <input type="tel" id="customerPhone" placeholder="Optional">
               <small>Used only if we need to reach you about the delivery.</small>
             </div>
-          </div>
 
-          <div class="form-group">
-            <label for="customerAddress">Delivery address</label>
-            <textarea id="customerAddress" rows="3" required></textarea>
-          </div>
+            <div class="form-group">
+              <label for="customerAddress">Delivery address</label>
+              <textarea id="customerAddress" rows="3" required></textarea>
+            </div>
 
-          <div class="form-group">
-            <label for="specialInstructions">Special instructions (optional)</label>
-            <textarea id="specialInstructions" rows="2" placeholder="Gate code, allergens, timing notes"></textarea>
-          </div>
+            <div class="form-group">
+              <label for="specialInstructions">Special instructions (optional)</label>
+              <textarea id="specialInstructions" rows="2" placeholder="Gate code, allergens, timing notes"></textarea>
+            </div>
 
-          <div class="form-actions">
-            <button type="button" id="clearOrderBtn" class="btn btn-secondary">Clear order</button>
-            <button type="submit" class="btn btn-primary">Place order</button>
-          </div>
-        </form>
+            <div class="form-actions">
+              <button type="button" id="clearOrderBtn" class="btn btn-secondary">Clear order</button>
+              <button type="submit" class="btn btn-primary">Place order</button>
+            </div>
+          </form>
 
-        <div id="errorMessage" class="message message-error" style="display: none;">
-          <span id="errorText"></span>
-        </div>
-      </div>
+          <div id="errorMessage" class="message message-error" style="display: none;">
+            <span id="errorText"></span>
+          </div>
+        </section>
+      </aside>
     </section>
 
     <section id="confirmationMessage" class="confirmation-section" style="display: none;">

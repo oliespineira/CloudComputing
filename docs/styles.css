@@ -866,6 +866,51 @@ main {
   text-align: left;
 }
 
+/* ========================================
+   SHOPPING LAYOUT (Customer Page)
+   ======================================== */
+
+.shopping-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  gap: var(--spacing-lg);
+  align-items: start;
+  margin-bottom: var(--spacing-xl);
+}
+
+.order-column {
+  position: sticky;
+  top: 90px;
+}
+
+.order-panel {
+  background: var(--white);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.selected-meals {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: var(--spacing-sm);
+}
+
+@media (max-width: 900px) {
+  .shopping-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .order-column {
+    position: static;
+  }
+
+  .selected-meals {
+    max-height: none;
+  }
+}
+
 .detail-row {
   display: flex;
   justify-content: space-between;
