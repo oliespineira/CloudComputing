@@ -5,4 +5,5 @@
 azure-functions
 azure-data-tables
 azure-storage-queue
-
+bcrypt
+PyJWT
