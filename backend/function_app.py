@@ -4,13 +4,312 @@ import logging
 import uuid
 import os
 from azure.data.tables import TableClient
-from datetime import datetime
+from datetime import datetime, timedelta
 from azure.storage.queue import QueueClient
 import hashlib
+import bcrypt
+import jwt
 
 
 # Azure Functions app - all HTTP functions are defined here
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+# ========================================
+# AUTHENTICATION HELPERS
+# ========================================
+
+def get_users_table():
+    """Get Users table client"""
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    return TableClient.from_connection_string(
+        conn_str=connection_string,
+        table_name="Users"
+    )
+
+def issue_token(email: str, role: str, name: str) -> str:
+    """Generate JWT token for authenticated user"""
+    secret = os.getenv("JWT_SECRET", "your-secret-key-change-this-in-production")
+    issuer = os.getenv("JWT_ISSUER", "bytebite-api")
+    audience = os.getenv("JWT_AUDIENCE", issuer)
+    expires_minutes = int(os.getenv("JWT_EXPIRES_MINUTES", "60"))
+    
+    now = datetime.utcnow()
+    payload = {
+        "sub": email,
+        "role": role,
+        "name": name,
+        "iat": now,
+        "exp": now + timedelta(minutes=expires_minutes),
+        "iss": issuer,
+        "aud": audience,
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+
+def verify_token(token: str) -> dict:
+    """Verify JWT token and return payload"""
+    secret = os.getenv("JWT_SECRET", "your-secret-key-change-this-in-production")
+    issuer = os.getenv("JWT_ISSUER", "bytebite-api")
+    audience = os.getenv("JWT_AUDIENCE", issuer)
+    
+    try:
+        payload = jwt.decode(
+            token,
+            secret,
+            algorithms=["HS256"],
+            issuer=issuer,
+            audience=audience
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise ValueError("Token expired")
+    except jwt.InvalidTokenError:
+        raise ValueError("Invalid token")
+
+# ========================================
+# AUTHENTICATION FUNCTIONS
+# ========================================
+
+@app.route(route="signup", methods=["POST", "OPTIONS"])
+def signup(req: func.HttpRequest) -> func.HttpResponse:
+    """Register a new user account"""
+    logging.info('Signup function triggered')
+    
+    # Handle CORS preflight
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+        )
+    
+    try:
+        body = req.get_json()
+    except ValueError:
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid JSON"}),
+            status_code=400,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+    
+    # Extract and validate inputs
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password") or ""
+    role = (body.get("role") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    phone = (body.get("phone") or "").strip()
+    
+    # Validation
+    if role not in ("customer", "restaurant", "driver"):
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid role. Must be customer, restaurant, or driver"}),
+            status_code=400,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+    
+    if not email or not password or not name:
+        return func.HttpResponse(
+            json.dumps({"error": "Email, password, and name are required"}),
+            status_code=400,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+    
+    if len(password) < 8:
+        return func.HttpResponse(
+            json.dumps({"error": "Password must be at least 8 characters"}),
+            status_code=400,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+    
+    try:
+        table = get_users_table()
+        
+        # Check if user already exists
+        try:
+            existing = table.get_entity(partition_key=role, row_key=email)
+            return func.HttpResponse(
+                json.dumps({"error": "User already exists"}),
+                status_code=409,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        except Exception:
+            pass  # User doesn't exist, continue
+        
+        # Hash password
+        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        
+        # Create user entity
+        entity = {
+            "PartitionKey": role,
+            "RowKey": email,
+            "PasswordHash": password_hash,
+            "Role": role,
+            "Name": name,
+            "Phone": phone,
+            "Status": "active",
+            "CreatedAt": datetime.utcnow().isoformat()
+        }
+        
+        table.create_entity(entity=entity)
+        logging.info(f"User created: {email} with role {role}")
+        
+        # Generate token
+        token = issue_token(email, role, name)
+        
+        # Decode to get expiry
+        decoded = jwt.decode(
+            token,
+            os.getenv("JWT_SECRET", "your-secret-key-change-this-in-production"),
+            algorithms=["HS256"],
+            options={"verify_signature": False}
+        )
+        expires_at = datetime.utcfromtimestamp(decoded["exp"]).isoformat() + "Z"
+        
+        return func.HttpResponse(
+            json.dumps({
+                "token": token,
+                "role": role,
+                "name": name,
+                "expiresAt": expires_at
+            }),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Signup error: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": f"Internal server error: {str(e)}"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+
+@app.route(route="login", methods=["POST", "OPTIONS"])
+def login(req: func.HttpRequest) -> func.HttpResponse:
+    """Authenticate user and return JWT token"""
+    logging.info('Login function triggered')
+    
+    # Handle CORS preflight
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+        )
+    
+    try:
+        body = req.get_json()
+    except ValueError:
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid JSON"}),
+            status_code=400,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+    
+    # Extract inputs
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password") or ""
+    role = (body.get("role") or "").strip().lower()
+    
+    # Validation
+    if role not in ("customer", "restaurant", "driver"):
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid role"}),
+            status_code=400,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+    
+    if not email or not password:
+        return func.HttpResponse(
+            json.dumps({"error": "Email and password are required"}),
+            status_code=400,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+    
+    try:
+        table = get_users_table()
+        
+        # Get user
+        try:
+            user = table.get_entity(partition_key=role, row_key=email)
+        except Exception:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid credentials"}),
+                status_code=401,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        
+        # Check status
+        if user.get("Status", "active") != "active":
+            return func.HttpResponse(
+                json.dumps({"error": "Account suspended"}),
+                status_code=403,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        
+        # Verify password
+        stored_hash = user.get("PasswordHash")
+        if not stored_hash or not bcrypt.checkpw(password.encode(), stored_hash.encode()):
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid credentials"}),
+                status_code=401,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        
+        # Generate token
+        name = user.get("Name", "")
+        token = issue_token(email, role, name)
+        
+        # Decode to get expiry
+        decoded = jwt.decode(
+            token,
+            os.getenv("JWT_SECRET", "your-secret-key-change-this-in-production"),
+            algorithms=["HS256"],
+            options={"verify_signature": False}
+        )
+        expires_at = datetime.utcfromtimestamp(decoded["exp"]).isoformat() + "Z"
+        
+        logging.info(f"User logged in: {email} with role {role}")
+        
+        return func.HttpResponse(
+            json.dumps({
+                "token": token,
+                "role": role,
+                "name": name,
+                "expiresAt": expires_at
+            }),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Login error: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": f"Internal server error: {str(e)}"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
 
 # ========================================
 # RESTAURANT FUNCTIONS
