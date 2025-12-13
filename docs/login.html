@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ByteBite - Login</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-brand">
+        <h1>ByteBite</h1>
+        <p class="nav-subtitle">Delivery in minutes</p>
+      </div>
+      <div class="nav-links">
+        <a class="nav-link" href="index.html">Home</a>
+        <a class="nav-link" href="customer.html">Customer portal</a>
+        <a class="nav-link" href="restaurant.html">Restaurant portal</a>
+        <a class="nav-link active" href="login.html">Login</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="page-header">
+    <div class="container">
+      <p class="eyebrow">Access</p>
+      <h1>Sign in to your account</h1>
+      <p>Customers, restaurants, and drivers use the same login with role-based access.</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="form-section">
+      <div class="form-container">
+        <div class="section-heading">
+          <p class="eyebrow">Welcome back</p>
+          <h2>Enter your credentials</h2>
+          <p class="section-subtitle">We authenticate by email and password, then return a session token.</p>
+        </div>
+
+        <form id="loginForm" class="form">
+          <div class="form-group">
+            <label for="loginEmail">Email</label>
+            <input type="email" id="loginEmail" autocomplete="email" required>
+          </div>
+
+          <div class="form-group">
+            <label for="loginPassword">Password</label>
+            <input type="password" id="loginPassword" autocomplete="current-password" required>
+          </div>
+
+          <div class="form-group">
+            <label for="loginRole">Role</label>
+            <select id="loginRole" required>
+              <option value="customer">Customer</option>
+              <option value="restaurant">Restaurant</option>
+              <option value="driver">Driver</option>
+            </select>
+            <small>Must match the role stored on your account.</small>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Sign in</button>
+          </div>
+        </form>
+
+        <div id="loginSuccess" class="message message-success" style="display:none;">
+          Logged in. Redirecting...
+        </div>
+        <div id="loginError" class="message message-error" style="display:none;">
+          <span id="loginErrorText"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Cloud Computing Project · IE University · Fall 2025</p>
+  </footer>
+
+  <script>
+    const API_BASE_URL = 'https://bytebite-functions-g6gng2eahnb0f2gw.westeurope-01.azurewebsites.net/api';
+    const LOGIN_ENDPOINT = `${API_BASE_URL}/login`;
+
+    const loginForm = document.getElementById('loginForm');
+    const loginSuccess = document.getElementById('loginSuccess');
+    const loginError = document.getElementById('loginError');
+    const loginErrorText = document.getElementById('loginErrorText');
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      loginSuccess.style.display = 'none';
+      loginError.style.display = 'none';
+
+      const payload = {
+        email: document.getElementById('loginEmail').value.trim().toLowerCase(),
+        password: document.getElementById('loginPassword').value,
+        role: document.getElementById('loginRole').value
+      };
+
+      try {
+        const response = await fetch(LOGIN_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Invalid credentials');
+        }
+
+        // Expect { token, role, name, expiresAt } from backend
+        localStorage.setItem('bytebite_token', result.token);
+        localStorage.setItem('bytebite_role', result.role);
+        localStorage.setItem('bytebite_name', result.name || '');
+
+        loginSuccess.style.display = 'block';
+        setTimeout(() => {
+          window.location.href = result.role === 'driver' ? 'driver.html' : result.role === 'restaurant' ? 'restaurant.html' : 'customer.html';
+        }, 900);
+      } catch (err) {
+        loginErrorText.textContent = err.message;
+        loginError.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>
