@@ -56,7 +56,10 @@ def _generate_token(email: str, role: str, name: str) -> str:
         "name": name,
         "exp": datetime.utcnow() + timedelta(hours=24)
     }
-    return jwt.encode(payload, secret, algorithm="HS256")
+    token = jwt.encode(payload, secret, algorithm="HS256")
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
+    return token
 
 # ========================================
 # AUTH FUNCTIONS
@@ -300,6 +303,12 @@ def register_restaurant(req: func.HttpRequest) -> func.HttpResponse:
                 "Access-Control-Allow-Headers": "Content-Type",
             },
         )
+
+    # Optional: legacy alias if any client still calls RegisterUser
+    @app.route(route="RegisterUser", methods=["POST", "OPTIONS"])
+    def register_user_legacy(req: func.HttpRequest) -> func.HttpResponse:
+        return signup(req)
+
 
     try:
         # Accept both query params (GET) and JSON body (POST)
