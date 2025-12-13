@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ByteBite - Driver Portal</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-brand">
+        <h1>ByteBite</h1>
+        <p class="nav-subtitle">Delivery in minutes</p>
+      </div>
+      <div class="nav-links">
+        <a class="nav-link" href="index.html">Home</a>
+        <a class="nav-link" href="customer.html">Customer portal</a>
+        <a class="nav-link" href="restaurant.html">Restaurant portal</a>
+        <a class="nav-link active" href="driver.html">Driver portal</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="page-header">
+    <div class="container">
+      <p class="eyebrow">Driver dashboard</p>
+      <h1>Accept and manage deliveries</h1>
+      <p>Select your delivery area to see available orders in real-time.</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="form-section">
+      <div class="form-container">
+        <div class="section-heading">
+          <p class="eyebrow">Step 1</p>
+          <h2>Select your delivery area</h2>
+          <p class="section-subtitle">You'll see deliveries available in your selected area.</p>
+        </div>
+        <form id="areaForm" class="form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="driverArea">Delivery Area</label>
+              <select id="driverArea" required>
+                <option value="">Choose your area</option>
+                <option value="North">North</option>
+                <option value="Central">Central</option>
+                <option value="South">South</option>
+              </select>
+              <small>North · Central · South</small>
+            </div>
+            <div class="form-group">
+              <label for="driverEmail">Your Email</label>
+              <input type="email" id="driverEmail" placeholder="driver@example.com" required>
+              <small>Used to identify you as the assigned driver</small>
+            </div>
+            <div class="form-group">
+              <label>&nbsp;</label>
+              <button type="submit" class="btn btn-primary btn-large">Start checking deliveries</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <div id="loadingState" class="loading-state" style="display: none;">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Checking for new deliveries...</p>
+    </div>
+
+    <section id="availableDeliveriesContainer" class="deliveries-section" style="display: none;">
+      <div class="section-heading">
+        <p class="eyebrow">Step 2</p>
+        <h2>Available deliveries in <span id="currentAreaDisplay"></span></h2>
+        <p class="section-subtitle">Click "Accept Delivery" to claim an order.</p>
+      </div>
+      <div id="availableDeliveriesList" class="deliveries-list"></div>
+      <div id="noDeliveriesMessage" class="message message-error" style="display: none;">
+        No deliveries available at the moment. Checking again in a few seconds...
+      </div>
+    </section>
+
+    <section id="myDeliveriesContainer" class="deliveries-section" style="display: none;">
+      <div class="section-heading">
+        <p class="eyebrow">Your assignments</p>
+        <h2>My deliveries</h2>
+        <p class="section-subtitle">Deliveries you've accepted and are working on.</p>
+      </div>
+      <div id="myDeliveriesList" class="deliveries-list"></div>
+      <div id="noMyDeliveriesMessage" class="message message-error" style="display: none;">
+        You haven't accepted any deliveries yet.
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Cloud Computing Project · IE University · Fall 2025</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

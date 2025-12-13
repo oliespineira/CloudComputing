@@ -5,6 +5,7 @@ import uuid
 import os
 from azure.data.tables import TableClient
 from datetime import datetime
+from azure.storage.queue import QueueClient
 
 # Azure Functions app - all HTTP functions are defined here
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -376,10 +377,37 @@ def submit_order(req: func.HttpRequest) -> func.HttpResponse:
 
         client.create_entity(entity=entity)
 
+        # Create delivery entry
+        deliveries_client = TableClient.from_connection_string(
+            conn_str=connection_string,
+            table_name="Deliveries"
+        )
+        
+        delivery_id = str(uuid.uuid4())
+        delivery_entity = {
+            "PartitionKey": delivery_area,
+            "RowKey": delivery_id,
+            "OrderId": order_id,
+            "CustomerName": customer_name,
+            "CustomerAddress": customer_address,
+            "RestaurantName": meals[0].get('restaurantName') if meals else "",
+            "TotalPrice": total_price,
+            "EstimatedDeliveryTime": estimated_delivery_time,
+            "Status": "pending",
+            "DriverEmail": "",
+            "CreatedAt": datetime.utcnow().isoformat()
+        }
+        
+        deliveries_client.create_entity(entity=delivery_entity)
+        
+        # Send notification to queue
+        send_delivery_notification(delivery_id, order_id, delivery_area)
+
         return func.HttpResponse(
             json.dumps({
                 "success": True,
                 "orderId": order_id,
+                "deliveryId": delivery_id,  # Include delivery ID in response
                 "totalPrice": total_price,
                 "totalItems": total_items,
                 "estimatedDeliveryTime": estimated_delivery_time,
@@ -398,3 +426,259 @@ def submit_order(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"}
         )
+
+
+# ========================================
+# DRIVER FUNCTIONS
+# ========================================
+
+@app.route(route="CheckDeliveryQueue", methods=["POST", "OPTIONS"])
+def check_delivery_queue(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Driver checks queue for new deliveries in their area.
+    Uses long polling - waits up to 30 seconds for a message.
+    """
+    logging.info('CheckDeliveryQueue function triggered')
+
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            },
+        )
+
+    try:
+        req_body = req.get_json()
+        area = req_body.get('area')
+        driver_email = req_body.get('driverEmail')
+        
+        if not area:
+            return func.HttpResponse(
+                json.dumps({"error": "Area required"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        
+        queue_client = get_queue_client(area)
+        
+        # Get up to 5 messages
+        messages = queue_client.receive_messages(
+            messages_per_page=5,
+            visibility_timeout=30  # Hide from other drivers for 30 seconds
+        )
+        
+        deliveries = []
+        for msg in messages:
+            try:
+                message_data = json.loads(msg.content)
+                
+                # Get full delivery details from table
+                connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+                deliveries_client = TableClient.from_connection_string(
+                    conn_str=connection_string,
+                    table_name="Deliveries"
+                )
+                
+                delivery = deliveries_client.get_entity(
+                    partition_key=area,
+                    row_key=message_data['deliveryId']
+                )
+                
+                # Only include if still pending (not taken by another driver)
+                if delivery.get('Status') == 'pending':
+                    deliveries.append({
+                        "deliveryId": delivery.get("RowKey"),
+                        "orderId": delivery.get("OrderId"),
+                        "customerAddress": delivery.get("CustomerAddress"),
+                        "customerName": delivery.get("CustomerName"),
+                        "restaurantName": delivery.get("RestaurantName"),
+                        "totalPrice": float(delivery.get("TotalPrice", 0)),
+                        "estimatedTime": int(delivery.get("EstimatedDeliveryTime", 0)),
+                        "createdAt": delivery.get("CreatedAt"),
+                        "messageId": msg.id,  # Needed to delete message later
+                        "popReceipt": msg.pop_receipt  # Needed to delete message later
+                    })
+                else:
+                    # Delivery already taken - remove from queue
+                    queue_client.delete_message(msg.id, msg.pop_receipt)
+                    
+            except Exception as e:
+                logging.error(f"Error processing queue message: {str(e)}")
+                continue
+        
+        return func.HttpResponse(
+            json.dumps({
+                "deliveries": deliveries,
+                "count": len(deliveries)
+            }),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Error: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+
+@app.route(route="AcceptDeliveryFromQueue", methods=["POST", "OPTIONS"])
+def accept_delivery_from_queue(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Driver accepts delivery and removes it from queue.
+    This combines AcceptDelivery + removing queue message.
+    """
+    logging.info('AcceptDeliveryFromQueue function triggered')
+
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            },
+        )
+
+    try:
+        req_body = req.get_json()
+        
+        delivery_id = req_body.get('deliveryId')
+        driver_email = req_body.get('driverEmail')
+        area = req_body.get('area')
+        message_id = req_body.get('messageId')
+        pop_receipt = req_body.get('popReceipt')
+        
+        if not all([delivery_id, driver_email, area, message_id, pop_receipt]):
+            return func.HttpResponse(
+                json.dumps({"error": "Missing required fields"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        
+        connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+        deliveries_client = TableClient.from_connection_string(
+            conn_str=connection_string,
+            table_name="Deliveries"
+        )
+        
+        # Get delivery and check if still available
+        try:
+            delivery = deliveries_client.get_entity(
+                partition_key=area,
+                row_key=delivery_id
+            )
+        except:
+            return func.HttpResponse(
+                json.dumps({"error": "Delivery not found"}),
+                status_code=404,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        
+        # Check if already assigned
+        if delivery.get('Status') != 'pending':
+            return func.HttpResponse(
+                json.dumps({"error": "Delivery already assigned to another driver"}),
+                status_code=409,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        
+        # Update delivery
+        delivery['DriverEmail'] = driver_email
+        delivery['Status'] = 'assigned'
+        delivery['AssignedAt'] = datetime.utcnow().isoformat()
+        
+        deliveries_client.update_entity(entity=delivery, mode='replace')
+        
+        # Update order status
+        orders_client = TableClient.from_connection_string(
+            conn_str=connection_string,
+            table_name="Orders"
+        )
+        
+        try:
+            order = orders_client.get_entity(
+                partition_key=area,
+                row_key=delivery.get('OrderId')
+            )
+            order['Status'] = 'assigned'
+            order['DriverEmail'] = driver_email
+            orders_client.update_entity(entity=order, mode='replace')
+        except:
+            pass
+        
+        # Remove message from queue
+        try:
+            queue_client = get_queue_client(area)
+            queue_client.delete_message(message_id, pop_receipt)
+            logging.info(f"Removed delivery {delivery_id} from queue")
+        except Exception as e:
+            logging.error(f"Error removing message from queue: {str(e)}")
+            # Continue anyway - delivery is assigned
+        
+        return func.HttpResponse(
+            json.dumps({
+                "success": True,
+                "message": "Delivery accepted",
+                "deliveryId": delivery_id,
+                "assignedAt": delivery['AssignedAt']
+            }),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Error: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+
+# ========================================
+# QUEUE HELPER FUNCTIONS
+# ========================================
+
+def get_queue_client(area: str):
+    """Get queue client for specific delivery area"""
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    queue_name = f"deliveries-{area.lower()}"
+    return QueueClient.from_connection_string(
+        conn_str=connection_string,
+        queue_name=queue_name
+    )
+
+def send_delivery_notification(delivery_id: str, order_id: str, area: str):
+    """Send message to queue when new delivery is created"""
+    try:
+        queue_client = get_queue_client(area)
+        
+        message = {
+            "deliveryId": delivery_id,
+            "orderId": order_id,
+            "area": area,
+            "timestamp": datetime.utcnow().isoformat(),
+            "type": "new_delivery"
+        }
+        
+        # Send message to queue (Base64 encoded by default)
+        queue_client.send_message(json.dumps(message))
+        logging.info(f"Sent delivery notification to queue: {delivery_id}")
+        
+    except Exception as e:
+        logging.error(f"Error sending queue message: {str(e)}")
+        # Don't fail the order if queue fails - delivery still created in table

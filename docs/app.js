@@ -11,7 +11,9 @@ const API_CONFIG = {
   endpoints: {
     registerMeal: `${API_BASE_URL}/registermeal`,
     getMealsByArea: `${API_BASE_URL}/getmealsbyarea`,
-    submitOrder: `${API_BASE_URL}/submitorder`
+    submitOrder: `${API_BASE_URL}/submitorder`,
+    checkDeliveryQueue: `${API_BASE_URL}/CheckDeliveryQueue`,
+    acceptDeliveryFromQueue: `${API_BASE_URL}/AcceptDeliveryFromQueue`
   }
 };
 
@@ -402,6 +404,192 @@ function validateEmail(email) {
 function validatePhone(phone) {
   const re = /^[\d\s\+\-\(\)]+$/;
   return re.test(phone) && phone.replace(/\D/g, '').length >= 9;
+}
+
+// ========================================
+// DRIVER PAGE FUNCTIONALITY
+// ========================================
+
+if (document.getElementById('driverArea')) {
+  let currentArea = '';
+  let driverEmail = '';
+  let isCheckingQueue = false;
+  let queueCheckInterval = null;
+
+  const areaForm = document.getElementById('areaForm');
+  const loadingState = document.getElementById('loadingState');
+  const availableDeliveriesContainer = document.getElementById('availableDeliveriesContainer');
+  const availableDeliveriesList = document.getElementById('availableDeliveriesList');
+  const noDeliveriesMessage = document.getElementById('noDeliveriesMessage');
+  const myDeliveriesContainer = document.getElementById('myDeliveriesContainer');
+  const myDeliveriesList = document.getElementById('myDeliveriesList');
+  const noMyDeliveriesMessage = document.getElementById('noMyDeliveriesMessage');
+
+  // Area selection handler
+  areaForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const area = document.getElementById('driverArea').value;
+    const email = document.getElementById('driverEmail').value.trim();
+    
+    if (!area || !email) return;
+
+    currentArea = area;
+    driverEmail = email;
+
+    // Stop any existing polling
+    if (queueCheckInterval) {
+      clearTimeout(queueCheckInterval);
+      queueCheckInterval = null;
+    }
+
+    // Show loading state
+    loadingState.style.display = 'block';
+    availableDeliveriesContainer.style.display = 'none';
+    myDeliveriesContainer.style.display = 'none';
+
+    // Start checking queue
+    await checkQueueForDeliveries();
+    await loadMyDeliveries();
+  });
+
+  // Check queue for new deliveries
+  async function checkQueueForDeliveries() {
+    if (isCheckingQueue) return; // Prevent multiple simultaneous checks
+    
+    isCheckingQueue = true;
+    loadingState.style.display = 'none';
+    availableDeliveriesContainer.style.display = 'block';
+    document.getElementById('currentAreaDisplay').textContent = currentArea;
+    
+    try {
+      const response = await fetch(API_CONFIG.endpoints.checkDeliveryQueue, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+        },
+        body: JSON.stringify({
+          area: currentArea,
+          driverEmail: driverEmail
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to check queue');
+      }
+      
+      if (result.deliveries && result.deliveries.length > 0) {
+        displayAvailableDeliveries(result.deliveries);
+      } else {
+        noDeliveriesMessage.style.display = 'block';
+        availableDeliveriesList.innerHTML = '';
+      }
+      
+      // Check again in 5 seconds
+      queueCheckInterval = setTimeout(checkQueueForDeliveries, 5000);
+      
+    } catch (error) {
+      console.error('Error checking queue:', error);
+      noDeliveriesMessage.textContent = `Error: ${error.message}. Retrying in 10 seconds...`;
+      noDeliveriesMessage.style.display = 'block';
+      // Retry in 10 seconds on error
+      queueCheckInterval = setTimeout(checkQueueForDeliveries, 10000);
+    } finally {
+      isCheckingQueue = false;
+    }
+  }
+
+  // Display available deliveries
+  function displayAvailableDeliveries(deliveries) {
+    noDeliveriesMessage.style.display = 'none';
+    
+    availableDeliveriesList.innerHTML = deliveries.map((delivery, index) => `
+      <div class="delivery-card">
+        <div class="delivery-header">
+          <h3>Order #${delivery.orderId.slice(0, 8)}</h3>
+          <span class="delivery-badge">Pending</span>
+        </div>
+        <div class="delivery-details">
+          <p><strong>Restaurant:</strong> ${delivery.restaurantName || 'N/A'}</p>
+          <p><strong>Customer:</strong> ${delivery.customerName}</p>
+          <p><strong>Address:</strong> ${delivery.customerAddress}</p>
+          <p><strong>Total:</strong> €${delivery.totalPrice.toFixed(2)}</p>
+          <p><strong>Est. Time:</strong> ${delivery.estimatedTime} min</p>
+          <p class="delivery-meta"><small>Created: ${new Date(delivery.createdAt).toLocaleString()}</small></p>
+        </div>
+        <button 
+          class="btn btn-primary accept-delivery-btn" 
+          data-delivery-id="${delivery.deliveryId}"
+          data-message-id="${delivery.messageId}"
+          data-pop-receipt="${delivery.popReceipt}">
+          Accept Delivery
+        </button>
+      </div>
+    `).join('');
+    
+    // Add event listeners to buttons
+    availableDeliveriesList.querySelectorAll('.accept-delivery-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        acceptDelivery(
+          this.dataset.deliveryId,
+          this.dataset.messageId,
+          this.dataset.popReceipt
+        );
+      });
+    });
+  }
+
+  // Accept delivery
+  window.acceptDelivery = async function(deliveryId, messageId, popReceipt) {
+    try {
+      const response = await fetch(API_CONFIG.endpoints.acceptDeliveryFromQueue, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+        },
+        body: JSON.stringify({
+          deliveryId,
+          driverEmail,
+          area: currentArea,
+          messageId,
+          popReceipt
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to accept delivery');
+      }
+      
+      alert('Delivery accepted!');
+      await checkQueueForDeliveries(); // Check for more deliveries
+      await loadMyDeliveries(); // Refresh my deliveries
+      
+    } catch (error) {
+      alert(error.message);
+      await checkQueueForDeliveries(); // Refresh list
+    }
+  };
+
+  // Load my deliveries (assigned to this driver)
+  async function loadMyDeliveries() {
+    // Note: This would require a new endpoint like GetMyDeliveries
+    // For now, we'll just show the container
+    myDeliveriesContainer.style.display = 'block';
+    myDeliveriesList.innerHTML = '<p>Feature coming soon: View your assigned deliveries here.</p>';
+    
+    // TODO: Implement GetMyDeliveries endpoint and fetch here
+    // const response = await fetch(`${API_BASE_URL}/GetMyDeliveries`, {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({ driverEmail, area: currentArea })
+    // });
+  }
 }
 
 console.log('ByteBite app initialized - Connected to Azure Functions');
