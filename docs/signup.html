@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ByteBite - Sign Up</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-brand">
+        <h1>ByteBite</h1>
+        <p class="nav-subtitle">Delivery in minutes</p>
+      </div>
+      <div class="nav-links">
+        <a class="nav-link" href="index.html">Home</a>
+        <a class="nav-link" href="customer.html">Customer portal</a>
+        <a class="nav-link" href="restaurant.html">Restaurant portal</a>
+        <a class="nav-link" href="login.html">Login</a>
+        <a class="nav-link active" href="signup.html">Sign up</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="page-header">
+    <div class="container">
+      <p class="eyebrow">Create account</p>
+      <h1>Join ByteBite</h1>
+      <p>Customers, restaurants, and drivers share one account system with role-based access.</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="form-section">
+      <div class="form-container">
+        <div class="section-heading">
+          <p class="eyebrow">Sign up</p>
+          <h2>Tell us who you are</h2>
+          <p class="section-subtitle">We’ll create your account and return a session token on success.</p>
+        </div>
+
+        <form id="signupForm" class="form">
+          <div class="form-group">
+            <label for="signupName">Full name</label>
+            <input type="text" id="signupName" autocomplete="name" required>
+          </div>
+
+          <div class="form-group">
+            <label for="signupEmail">Email</label>
+            <input type="email" id="signupEmail" autocomplete="email" required>
+          </div>
+
+          <div class="form-group">
+            <label for="signupPhone">Phone</label>
+            <input type="tel" id="signupPhone" autocomplete="tel" placeholder="Optional">
+          </div>
+
+          <div class="form-group">
+            <label for="signupPassword">Password</label>
+            <input type="password" id="signupPassword" autocomplete="new-password" required>
+          </div>
+
+          <div class="form-group">
+            <label for="signupRole">Role</label>
+            <select id="signupRole" required>
+              <option value="customer">Customer</option>
+              <option value="restaurant">Restaurant</option>
+              <option value="driver">Driver</option>
+            </select>
+            <small>Choose the role you will use to sign in.</small>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Create account</button>
+          </div>
+        </form>
+
+        <div id="signupSuccess" class="message message-success" style="display:none;">
+          Account created. Redirecting...
+        </div>
+        <div id="signupError" class="message message-error" style="display:none;">
+          <span id="signupErrorText"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Cloud Computing Project · IE University · Fall 2025</p>
+  </footer>
+
+  <script>
+    const API_BASE_URL = 'https://bytebite-functions-g6gng2eahnb0f2gw.westeurope-01.azurewebsites.net/api';
+    const SIGNUP_ENDPOINT = `${API_BASE_URL}/signup`;
+
+    const signupForm = document.getElementById('signupForm');
+    const signupSuccess = document.getElementById('signupSuccess');
+    const signupError = document.getElementById('signupError');
+    const signupErrorText = document.getElementById('signupErrorText');
+
+    signupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      signupSuccess.style.display = 'none';
+      signupError.style.display = 'none';
+
+      const payload = {
+        name: document.getElementById('signupName').value.trim(),
+        email: document.getElementById('signupEmail').value.trim().toLowerCase(),
+        phone: document.getElementById('signupPhone').value.trim(),
+        password: document.getElementById('signupPassword').value,
+        role: document.getElementById('signupRole').value
+      };
+
+      try {
+        const response = await fetch(SIGNUP_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Unable to create account');
+        }
+
+        // Expect { token, role, name, expiresAt } from backend
+        localStorage.setItem('bytebite_token', result.token);
+        localStorage.setItem('bytebite_role', result.role);
+        localStorage.setItem('bytebite_name', result.name || payload.name);
+
+        signupSuccess.style.display = 'block';
+        setTimeout(() => {
+          window.location.href = result.role === 'driver' ? 'driver.html' : result.role === 'restaurant' ? 'restaurant.html' : 'customer.html';
+        }, 900);
+      } catch (err) {
+        signupErrorText.textContent = err.message;
+        signupError.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>

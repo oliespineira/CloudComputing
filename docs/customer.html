@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ByteBite - Customer Portal</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-brand">
+        <h1>ByteBite</h1>
+        <p class="nav-subtitle">Delivery in minutes</p>
+      </div>
+      <div class="nav-links">
+        <a class="nav-link" href="index.html">Home</a>
+        <a class="nav-link active" href="customer.html">Customer portal</a>
+        <a class="nav-link" href="restaurant.html">Restaurant portal</a>
+        <a class="nav-link" href="login.html">Login / Sign up</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="page-header">
+    <div class="container">
+      <p class="eyebrow">Order food</p>
+      <h1>Browse meals by delivery area</h1>
+      <p>Choose your area, review available dishes, and place an order with a clear summary and ETA.</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="form-section">
+      <div class="form-container">
+        <div class="section-heading">
+          <p class="eyebrow">Step 1</p>
+          <h2>Select your delivery area</h2>
+          <p class="section-subtitle">Only meals deliverable to your area are shown.</p>
+        </div>
+        <form id="areaForm" class="form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="customerArea">Delivery Area</label>
+              <select id="customerArea" required>
+                <option value="">Choose your area</option>
+                <option value="North">North</option>
+                <option value="Central">Central</option>
+                <option value="South">South</option>
+              </select>
+              <small>North · Central · South</small>
+            </div>
+            <div class="form-group">
+              <label>&nbsp;</label>
+              <button type="submit" class="btn btn-primary btn-large">Browse meals</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <div id="loadingState" class="loading-state" style="display: none;">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Loading meals for your area...</p>
+    </div>
+
+    <section class="shopping-layout">
+      <div class="meals-column">
+        <section id="mealsContainer" class="meals-section" style="display: none;">
+          <div class="section-heading">
+            <p class="eyebrow">Step 2</p>
+            <h2>Available meals in <span id="selectedArea"></span></h2>
+            <p class="section-subtitle">Select dishes to build your order.</p>
+          </div>
+          <div id="mealsGrid" class="meals-grid"></div>
+          <div id="noMealsMessage" class="message message-error" style="display: none;">
+            No meals available in this area.
+          </div>
+        </section>
+      </div>
+
+      <aside class="order-column">
+        <section id="orderFormContainer" class="order-panel">
+          <div class="section-heading">
+            <p class="eyebrow">Step 3</p>
+            <h2>Your order</h2>
+            <p class="section-subtitle">Review the cart, then add delivery details.</p>
+          </div>
+
+          <div id="emptyOrderState" class="empty-order">Add meals to start your order.</div>
+
+          <div id="selectedMealsContainer" class="selected-meals"></div>
+
+          <div class="order-total">
+            <div class="total-row">
+              <span>Total items</span>
+              <strong><span id="totalItems">0</span></strong>
+            </div>
+            <div class="total-row">
+              <span>Total price</span>
+              <strong><span id="totalPrice">€0.00</span></strong>
+            </div>
+          </div>
+
+          <form id="orderForm" class="form">
+            <div class="form-group">
+              <label for="customerName">Your name</label>
+              <input type="text" id="customerName" required>
+            </div>
+
+            <div class="form-group">
+              <label for="customerPhone">Phone number</label>
+              <input type="tel" id="customerPhone" placeholder="Optional">
+              <small>Used only if we need to reach you about the delivery.</small>
+            </div>
+
+            <div class="form-group">
+              <label for="customerAddress">Delivery address</label>
+              <textarea id="customerAddress" rows="3" required></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="specialInstructions">Special instructions (optional)</label>
+              <textarea id="specialInstructions" rows="2" placeholder="Gate code, allergens, timing notes"></textarea>
+            </div>
+
+            <div class="form-actions">
+              <button type="button" id="clearOrderBtn" class="btn btn-secondary">Clear order</button>
+              <button type="submit" class="btn btn-primary">Place order</button>
+            </div>
+          </form>
+
+          <div id="errorMessage" class="message message-error" style="display: none;">
+            <span id="errorText"></span>
+          </div>
+        </section>
+      </aside>
+    </section>
+
+    <div id="mobileOrderBar" class="mobile-order-bar" style="display:none;">
+      <div class="mobile-order-info">
+        <span id="mobileItems">0 items</span>
+        <span class="dot">•</span>
+        <span id="mobileTotal">€0.00</span>
+      </div>
+      <button id="mobileCheckoutBtn" class="btn btn-primary btn-small" type="button">Review order</button>
+    </div>
+
+    <section id="confirmationMessage" class="confirmation-section" style="display: none;">
+      <div class="confirmation-box">
+        <div class="confirmation-content">
+          <div class="confirmation-icon" aria-hidden="true">✅</div>
+          <h2>Order confirmed</h2>
+          <p>We saved your order and estimated delivery time.</p>
+        </div>
+        <div class="confirmation-details">
+          <div class="detail-row"><span>Order for</span><strong id="confirmName"></strong></div>
+          <div class="detail-row"><span>Total</span><strong id="confirmTotal"></strong></div>
+          <div class="detail-row"><span>Items</span><strong id="confirmItems"></strong></div>
+          <div class="detail-row"><span>Estimated delivery</span><strong id="confirmDeliveryTime"></strong></div>
+          <div class="detail-row"><span>Address</span><strong id="confirmAddress"></strong></div>
+        </div>
+        <div class="form-actions">
+          <button id="newOrderBtn" class="btn btn-primary">Place new order</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Cloud Computing Project · IE University · Fall 2025</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
