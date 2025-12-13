@@ -115,6 +115,10 @@ if (document.getElementById('areaForm')) {
   const confirmationMessage = document.getElementById('confirmationMessage');
   const errorMessage = document.getElementById('errorMessage');
   const errorText = document.getElementById('errorText');
+  const mobileOrderBar = document.getElementById('mobileOrderBar');
+  const mobileItems = document.getElementById('mobileItems');
+  const mobileTotal = document.getElementById('mobileTotal');
+  const mobileCheckoutBtn = document.getElementById('mobileCheckoutBtn');
 
   // Area selection handler
   areaForm.addEventListener('submit', async (e) => {
@@ -131,6 +135,7 @@ if (document.getElementById('areaForm')) {
     loadingState.style.display = 'block';
     mealsContainer.style.display = 'none';
     orderFormContainer.style.display = 'block';
+    if (mobileOrderBar) mobileOrderBar.style.display = 'none';
     confirmationMessage.style.display = 'none';
     errorMessage.style.display = 'none';
 
@@ -241,6 +246,7 @@ if (document.getElementById('areaForm')) {
       selectedMealsContainer.innerHTML = '';
       document.getElementById('totalItems').textContent = 0;
       document.getElementById('totalPrice').textContent = '€0.00';
+      if (mobileOrderBar) mobileOrderBar.style.display = 'none';
       return;
     }
 
@@ -265,6 +271,12 @@ if (document.getElementById('areaForm')) {
 
     document.getElementById('totalItems').textContent = totalItems;
     document.getElementById('totalPrice').textContent = `€${totalPrice.toFixed(2)}`;
+
+    if (mobileOrderBar) {
+      mobileItems.textContent = `${totalItems} item${totalItems === 1 ? '' : 's'}`;
+      mobileTotal.textContent = `€${totalPrice.toFixed(2)}`;
+      mobileOrderBar.style.display = 'flex';
+    }
 
     // Scroll to order form
     orderFormContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -360,8 +372,15 @@ if (document.getElementById('areaForm')) {
     mealsContainer.style.display = 'none';
     orderFormContainer.style.display = 'block';
     emptyOrderState.style.display = 'block';
+    if (mobileOrderBar) mobileOrderBar.style.display = 'none';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
+
+  if (mobileCheckoutBtn) {
+    mobileCheckoutBtn.addEventListener('click', () => {
+      orderFormContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
 }
 
 // ========================================
