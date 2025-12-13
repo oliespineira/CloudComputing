@@ -110,6 +110,7 @@ if (document.getElementById('areaForm')) {
   const mealsGrid = document.getElementById('mealsGrid');
   const noMealsMessage = document.getElementById('noMealsMessage');
   const orderFormContainer = document.getElementById('orderFormContainer');
+  const emptyOrderState = document.getElementById('emptyOrderState');
   const orderForm = document.getElementById('orderForm');
   const confirmationMessage = document.getElementById('confirmationMessage');
   const errorMessage = document.getElementById('errorMessage');
@@ -124,11 +125,12 @@ if (document.getElementById('areaForm')) {
 
     currentArea = area;
     selectedMeals = [];
+    updateOrderSummary();
 
     // Show loading state
     loadingState.style.display = 'block';
     mealsContainer.style.display = 'none';
-    orderFormContainer.style.display = 'none';
+    orderFormContainer.style.display = 'block';
     confirmationMessage.style.display = 'none';
     errorMessage.style.display = 'none';
 
@@ -233,11 +235,17 @@ if (document.getElementById('areaForm')) {
   // Update order summary
   function updateOrderSummary() {
     if (selectedMeals.length === 0) {
-      orderFormContainer.style.display = 'none';
+      orderFormContainer.style.display = 'block';
+      emptyOrderState.style.display = 'block';
+      const selectedMealsContainer = document.getElementById('selectedMealsContainer');
+      selectedMealsContainer.innerHTML = '';
+      document.getElementById('totalItems').textContent = 0;
+      document.getElementById('totalPrice').textContent = '€0.00';
       return;
     }
 
     orderFormContainer.style.display = 'block';
+    emptyOrderState.style.display = 'none';
 
     // Update selected meals display
     const selectedMealsContainer = document.getElementById('selectedMealsContainer');
@@ -350,7 +358,8 @@ if (document.getElementById('areaForm')) {
     areaForm.reset();
     confirmationMessage.style.display = 'none';
     mealsContainer.style.display = 'none';
-    orderFormContainer.style.display = 'none';
+    orderFormContainer.style.display = 'block';
+    emptyOrderState.style.display = 'block';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 }
