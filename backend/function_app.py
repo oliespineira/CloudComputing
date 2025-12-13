@@ -3,7 +3,10 @@ import json
 import logging
 import uuid
 import os
-from azure.data.tables import TableClient
+import bcrypt
+import jwt
+from azure.core.exceptions import ResourceNotFoundError
+from azure.data.tables import TableClient, TableServiceClient
 from datetime import datetime, timedelta
 from azure.storage.queue import QueueClient
 import hashlib
@@ -11,6 +14,275 @@ import hashlib
 
 # Azure Functions app - all HTTP functions are defined here
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+VALID_ROLES = {"customer", "restaurant", "driver"}
+
+
+def _get_storage_connection_string() -> str:
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    if not connection_string:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+    return connection_string
+
+
+def _get_users_table_client(connection_string: str) -> TableClient:
+    service_client = TableServiceClient.from_connection_string(conn_str=connection_string)
+    try:
+        service_client.create_table_if_not_exists(table_name="Users")
+    except Exception as exc:
+        logging.warning(f"Unable to ensure Users table exists: {exc}")
+    return service_client.get_table_client(table_name="Users")
+
+
+def _hash_password(raw_password: str) -> str:
+    return bcrypt.hashpw(raw_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_password(raw_password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(raw_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def _generate_token(email: str, role: str, name: str) -> str:
+    secret = os.getenv("JWT_SECRET")
+    if not secret:
+        raise RuntimeError("JWT_SECRET not configured")
+
+    payload = {
+        "sub": email,
+        "role": role,
+        "name": name,
+        "exp": datetime.utcnow() + timedelta(hours=24)
+    }
+    token = jwt.encode(payload, secret, algorithm="HS256")
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
+    return token
+
+# ========================================
+# AUTH FUNCTIONS
+# ========================================
+
+
+@app.route(route="signup", methods=["POST", "OPTIONS"])
+def signup(req: func.HttpRequest) -> func.HttpResponse:
+    """Create a user account and return a JWT."""
+    logging.info("signup function triggered")
+
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+        )
+
+    try:
+        try:
+            body = req.get_json()
+        except ValueError:
+            return func.HttpResponse(
+                json.dumps({"error": "Request body must be valid JSON"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        name = (body.get("name") or "").strip()
+        email = (body.get("email") or "").strip().lower()
+        password = body.get("password") or ""
+        role = (body.get("role") or "").strip().lower()
+        phone = (body.get("phone") or "").strip()
+
+        if not all([name, email, password, role]):
+            return func.HttpResponse(
+                json.dumps({"error": "name, email, password, and role are required"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        if role not in VALID_ROLES:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid role"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        connection_string = _get_storage_connection_string()
+        users_client = _get_users_table_client(connection_string)
+
+        try:
+            users_client.get_entity(partition_key=role, row_key=email)
+            return func.HttpResponse(
+                json.dumps({"error": "Account already exists"}),
+                status_code=409,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except ResourceNotFoundError:
+            pass
+
+        password_hash = _hash_password(password)
+
+        entity = {
+            "PartitionKey": role,
+            "RowKey": email,
+            "Name": name,
+            "Email": email,
+            "Phone": phone,
+            "Role": role,
+            "PasswordHash": password_hash,
+            "CreatedAt": datetime.utcnow().isoformat(),
+        }
+
+        try:
+            users_client.create_entity(entity=entity)
+        except Exception as exc:
+            logging.error(f"Failed to create user entity: {exc}")
+            return func.HttpResponse(
+                json.dumps({"error": "Failed to create account"}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        try:
+            token = _generate_token(email=email, role=role, name=name)
+        except Exception as exc:
+            logging.error(f"Failed to generate token: {exc}")
+            return func.HttpResponse(
+                json.dumps({"error": "Server configuration error"}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        return func.HttpResponse(
+            json.dumps({"token": token, "role": role, "name": name}),
+            status_code=201,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    except Exception as exc:
+        logging.error(f"Unexpected error in signup: {exc}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+
+@app.route(route="login", methods=["POST", "OPTIONS"])
+def login(req: func.HttpRequest) -> func.HttpResponse:
+    """Validate credentials and return a JWT."""
+    logging.info("login function triggered")
+
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+        )
+
+    try:
+        try:
+            body = req.get_json()
+        except ValueError:
+            return func.HttpResponse(
+                json.dumps({"error": "Request body must be valid JSON"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        email = (body.get("email") or "").strip().lower()
+        password = body.get("password") or ""
+        role = (body.get("role") or "").strip().lower()
+
+        if not all([email, password, role]):
+            return func.HttpResponse(
+                json.dumps({"error": "email, password, and role are required"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        if role not in VALID_ROLES:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid role"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        connection_string = _get_storage_connection_string()
+        users_client = _get_users_table_client(connection_string)
+
+        try:
+            user = users_client.get_entity(partition_key=role, row_key=email)
+        except ResourceNotFoundError:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid credentials"}),
+                status_code=401,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception as exc:
+            logging.error(f"Failed to fetch user: {exc}")
+            return func.HttpResponse(
+                json.dumps({"error": "Internal server error"}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        if not _verify_password(password, user.get("PasswordHash", "")):
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid credentials"}),
+                status_code=401,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        name = user.get("Name", "")
+
+        try:
+            token = _generate_token(email=email, role=role, name=name)
+        except Exception as exc:
+            logging.error(f"Failed to generate token: {exc}")
+            return func.HttpResponse(
+                json.dumps({"error": "Server configuration error"}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        return func.HttpResponse(
+            json.dumps({"token": token, "role": role, "name": name}),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    except Exception as exc:
+        logging.error(f"Unexpected error in login: {exc}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
 
 # ========================================
 # RESTAURANT FUNCTIONS
@@ -31,6 +303,12 @@ def register_restaurant(req: func.HttpRequest) -> func.HttpResponse:
                 "Access-Control-Allow-Headers": "Content-Type",
             },
         )
+
+    # Optional: legacy alias if any client still calls RegisterUser
+    @app.route(route="RegisterUser", methods=["POST", "OPTIONS"])
+    def register_user_legacy(req: func.HttpRequest) -> func.HttpResponse:
+        return signup(req)
+
 
     try:
         # Accept both query params (GET) and JSON body (POST)
@@ -267,6 +545,16 @@ def get_meals_by_area(req: func.HttpRequest) -> func.HttpResponse:
         query_filter = f"PartitionKey eq '{area}'"
         
         for entity in client.query_entities(query_filter=query_filter):
+            # ========================================
+            # ✅ NUEVO: Get image URL from table
+            # ========================================
+            image_url = entity.get("ImageURL", "")
+            
+            # If no URL, use placeholder
+            if not image_url:
+                image_url = "https://via.placeholder.com/400x300?text=No+Image"
+            # ========================================
+            
             meal = {
                 "restaurantName": entity.get("RestaurantName", ""),
                 "dishName": entity.get("DishName", ""),
@@ -274,148 +562,14 @@ def get_meals_by_area(req: func.HttpRequest) -> func.HttpResponse:
                 "price": float(entity.get("Price", 0)),
                 "prepTime": int(entity.get("PrepTime", 0)),
                 "area": entity.get("PartitionKey", ""),
-                "mealId": entity.get("RowKey", "")
+                "mealId": entity.get("RowKey", ""),
+                "imageUrl": image_url  # ✅ NUEVO: Añadido imageUrl
             }
             meals.append(meal)
 
         return func.HttpResponse(
             json.dumps(meals),
             status_code=200,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-
-    except Exception as e:
-        logging.error(f"Error: {str(e)}")
-        return func.HttpResponse(
-            json.dumps({"error": "Internal server error"}),
-            status_code=500,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-
-
-@app.route(route="SubmitOrder", methods=["POST", "OPTIONS"])
-def submit_order(req: func.HttpRequest) -> func.HttpResponse:
-    """Submit a customer order and calculate delivery time"""
-    logging.info('SubmitOrder function triggered')
-
-    # Handle CORS preflight
-    if req.method == "OPTIONS":
-        return func.HttpResponse(
-            status_code=204,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "POST,OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-            },
-        )
-
-    try:
-        # Get JSON body
-        try:
-            req_body = req.get_json()
-        except ValueError:
-            return func.HttpResponse(
-                json.dumps({"error": "Request body must be valid JSON"}),
-                status_code=400,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        customer_name = req_body.get('customerName')
-        customer_address = req_body.get('customerAddress')
-        customer_phone = req_body.get('customerPhone')
-        delivery_area = req_body.get('deliveryArea')
-        meals = req_body.get('meals', [])
-
-        # Validation
-        if not all([customer_name, customer_address, delivery_area]) or not meals:
-            return func.HttpResponse(
-                json.dumps({"error": "Missing required fields: customerName, customerAddress, deliveryArea, and meals"}),
-                status_code=400,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        # Calculate totals and delivery time
-        total_price = sum(meal.get('price', 0) * meal.get('quantity', 1) for meal in meals)
-        total_items = sum(meal.get('quantity', 1) for meal in meals)
-        max_prep_time = max((meal.get('prepTime', 0) for meal in meals), default=0)
-        estimated_delivery_time = max_prep_time + 10 + 20  # prep + pickup + delivery
-
-        # Get connection string
-        connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-        if not connection_string:
-            logging.error("AZURE_STORAGE_CONNECTION_STRING not set")
-            return func.HttpResponse(
-                json.dumps({"error": 'Server configuration error'}),
-                status_code=500,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        # Save order to Orders table
-        client = TableClient.from_connection_string(
-            conn_str=connection_string,
-            table_name="Orders"
-        )
-
-        order_id = str(uuid.uuid4())
-        entity = {
-            "PartitionKey": delivery_area,
-            "RowKey": order_id,
-            "CustomerName": customer_name,
-            "CustomerAddress": customer_address,
-            "CustomerPhone": customer_phone or "",
-            "DeliveryArea": delivery_area,
-            "TotalPrice": total_price,
-            "TotalItems": total_items,
-            "EstimatedDeliveryTime": estimated_delivery_time,
-            "Status": "Pending",
-            "CreatedAt": datetime.utcnow().isoformat(),
-            "Meals": json.dumps(meals)  # Store meals as JSON string
-        }
-
-        client.create_entity(entity=entity)
-
-        # Create delivery entry
-        deliveries_client = TableClient.from_connection_string(
-            conn_str=connection_string,
-            table_name="Deliveries"
-        )
-        
-        delivery_id = str(uuid.uuid4())
-        delivery_entity = {
-            "PartitionKey": delivery_area,
-            "RowKey": delivery_id,
-            "OrderId": order_id,
-            "CustomerName": customer_name,
-            "CustomerAddress": customer_address,
-            "RestaurantName": meals[0].get('restaurantName') if meals else "",
-            "TotalPrice": total_price,
-            "EstimatedDeliveryTime": estimated_delivery_time,
-            "Status": "pending",
-            "DriverEmail": "",
-            "CreatedAt": datetime.utcnow().isoformat()
-        }
-        
-        deliveries_client.create_entity(entity=delivery_entity)
-        
-        # Send notification to queue
-        send_delivery_notification(delivery_id, order_id, delivery_area)
-
-        return func.HttpResponse(
-            json.dumps({
-                "success": True,
-                "orderId": order_id,
-                "deliveryId": delivery_id,
-                "totalPrice": total_price,
-                "totalItems": total_items,
-                "estimatedDeliveryTime": estimated_delivery_time,
-                "message": "Order submitted successfully"
-            }),
-            status_code=201,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"}
         )
@@ -773,246 +927,3 @@ def send_delivery_notification(delivery_id: str, order_id: str, area: str):
         logging.error(f"Error sending queue message: {str(e)}")
 
         # Don't fail the order if queue fails - delivery still created in table
-
-# ========================================
-# LOGIN FUNCTION
-# ========================================
-
-@app.route(route="login", methods=["POST", "OPTIONS"])
-def login(req: func.HttpRequest) -> func.HttpResponse:
-    """Authenticate user and return session token"""
-    logging.info('Login function triggered')
-
-    # Handle CORS preflight
-    if req.method == "OPTIONS":
-        return func.HttpResponse(
-            status_code=204,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "POST,OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-            },
-        )
-
-    try:
-        # Get JSON body
-        try:
-            req_body = req.get_json()
-        except ValueError:
-            return func.HttpResponse(
-                json.dumps({"error": "Request body must be valid JSON"}),
-                status_code=400,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        email = req_body.get('email', '').strip().lower()
-        password = req_body.get('password', '')
-        role = req_body.get('role', '')
-
-        # Validation
-        if not all([email, password, role]):
-            return func.HttpResponse(
-                json.dumps({"error": "Email, password, and role are required"}),
-                status_code=400,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        if role not in ['customer', 'restaurant', 'driver']:
-            return func.HttpResponse(
-                json.dumps({"error": "Invalid role. Must be customer, restaurant, or driver"}),
-                status_code=400,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        # Get connection string
-        connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-        if not connection_string:
-            logging.error("AZURE_STORAGE_CONNECTION_STRING not set")
-            return func.HttpResponse(
-                json.dumps({"error": 'Server configuration error'}),
-                status_code=500,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        # Connect to Users table
-        client = TableClient.from_connection_string(
-            conn_str=connection_string,
-            table_name="Users"
-        )
-
-        # Query for user by email and role
-        query_filter = f"PartitionKey eq '{role}' and Email eq '{email}'"
-        
-        try:
-            users = list(client.query_entities(query_filter=query_filter))
-            
-            if not users:
-                return func.HttpResponse(
-                    json.dumps({"error": "Invalid credentials"}),
-                    status_code=401,
-                    mimetype="application/json",
-                    headers={"Access-Control-Allow-Origin": "*"}
-                )
-            
-            user = users[0]
-            
-            # Simple password comparison (NOT production-ready)
-            stored_password = user.get('Password', '')
-            
-            if password != stored_password:
-                return func.HttpResponse(
-                    json.dumps({"error": "Invalid credentials"}),
-                    status_code=401,
-                    mimetype="application/json",
-                    headers={"Access-Control-Allow-Origin": "*"}
-                )
-            
-            # Generate simple token
-            import hashlib
-            token_data = f"{email}{role}{datetime.utcnow().isoformat()}"
-            token = hashlib.sha256(token_data.encode()).hexdigest()
-            
-            from datetime import timedelta
-            expires_at = (datetime.utcnow() + timedelta(hours=24)).isoformat()
-            
-            return func.HttpResponse(
-                json.dumps({
-                    "token": token,
-                    "role": role,
-                    "name": user.get('Name', ''),
-                    "email": email,
-                    "expiresAt": expires_at
-                }),
-                status_code=200,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-            
-        except Exception as e:
-            logging.error(f"Error querying users: {str(e)}")
-            return func.HttpResponse(
-                json.dumps({"error": "Database error"}),
-                status_code=500,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-    except Exception as e:
-        logging.error(f"Error: {str(e)}")
-        return func.HttpResponse(
-            json.dumps({"error": "Internal server error"}),
-            status_code=500,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-
-
-@app.route(route="RegisterUser", methods=["POST", "OPTIONS"])
-def register_user(req: func.HttpRequest) -> func.HttpResponse:
-    """Register a new user"""
-    logging.info('RegisterUser function triggered')
-
-    if req.method == "OPTIONS":
-        return func.HttpResponse(
-            status_code=204,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "POST,OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-            },
-        )
-
-    try:
-        try:
-            req_body = req.get_json()
-        except ValueError:
-            return func.HttpResponse(
-                json.dumps({"error": "Request body must be valid JSON"}),
-                status_code=400,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        name = req_body.get('name', '').strip()
-        email = req_body.get('email', '').strip().lower()
-        password = req_body.get('password', '')
-        role = req_body.get('role', '')
-
-        if not all([name, email, password, role]):
-            return func.HttpResponse(
-                json.dumps({"error": "Name, email, password, and role are required"}),
-                status_code=400,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        if role not in ['customer', 'restaurant', 'driver']:
-            return func.HttpResponse(
-                json.dumps({"error": "Invalid role"}),
-                status_code=400,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-        if not connection_string:
-            return func.HttpResponse(
-                json.dumps({"error": 'Server configuration error'}),
-                status_code=500,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        client = TableClient.from_connection_string(
-            conn_str=connection_string,
-            table_name="Users"
-        )
-
-        # Check if user exists
-        query_filter = f"PartitionKey eq '{role}' and Email eq '{email}'"
-        existing_users = list(client.query_entities(query_filter=query_filter))
-        
-        if existing_users:
-            return func.HttpResponse(
-                json.dumps({"error": "User already exists"}),
-                status_code=409,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"}
-            )
-
-        # Create user
-        user_id = str(uuid.uuid4())
-        entity = {
-            "PartitionKey": role,
-            "RowKey": user_id,
-            "Name": name,
-            "Email": email,
-            "Password": password,
-            "CreatedAt": datetime.utcnow().isoformat()
-        }
-
-        client.create_entity(entity=entity)
-
-        return func.HttpResponse(
-            json.dumps({
-                "success": True,
-                "message": "User registered successfully",
-                "userId": user_id
-            }),
-            status_code=201,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
-
-    except Exception as e:
-        logging.error(f"Error: {str(e)}")
-        return func.HttpResponse(
-            json.dumps({"error": "Internal server error"}),
-            status_code=500,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
