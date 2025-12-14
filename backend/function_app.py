@@ -349,12 +349,15 @@ def upload_image_to_blob(base64_data: str, connection_string: str) -> str:
         container_name = "mealimages"
         blob_client = blob_service_client.get_blob_client(container=container_name, blob=unique_filename)
         
-        # Upload blob
-        blob_client.upload_blob(image_bytes, overwrite=True)
-        
-        # Set content type after upload
+        # Upload blob - content type will be inferred or can be set via metadata
         content_type = f"image/{mime_type}"
-        blob_client.set_http_headers(content_settings={'content_type': content_type})
+        
+        # Upload with metadata to store content type
+        blob_client.upload_blob(
+            image_bytes, 
+            overwrite=True,
+            metadata={'content_type': content_type}
+        )
         
         # Get blob URL
         blob_url = blob_client.url
