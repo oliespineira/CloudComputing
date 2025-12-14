@@ -230,42 +230,6 @@ git commit -m "Deploy frontend"
 git push origin finalBranch
 ```
 
-## Local Development
-
-### Frontend
-
-```bash
-cd docs
-python3 -m http.server 8000
-```
-
-Access at: http://localhost:8000
-
-### Backend
-
-1. Create `backend/local.settings.json`:
-```json
-{
-  "Values": {
-    "AZURE_STORAGE_CONNECTION_STRING": "your-connection-string",
-    "JWT_SECRET": "your-secret-key"
-  }
-}
-```
-
-2. Install dependencies:
-```bash
-cd backend
-pip install -r requirements.txt
-```
-
-3. Run locally:
-```bash
-func start
-```
-
-Backend runs at: http://localhost:7071/api
-
 ## Image Upload Flow
 
 1. **User selects image** → JavaScript reads file
