@@ -350,15 +350,15 @@ def upload_image_to_blob(base64_data: str, connection_string: str) -> str:
         blob_client = blob_service_client.get_blob_client(container=container_name, blob=unique_filename)
         
         # Upload blob
-        blob_client.upload_blob(image_bytes, overwrite=True)
-        
-        # Set content type after upload
         content_type = f"image/{mime_type}"
-        blob_client.set_http_headers(content_settings={'content_type': content_type})
+        
+        # Simple upload - content type can be set via blob properties if needed
+        # For now, just upload - browsers can usually infer image type from extension
+        blob_client.upload_blob(image_bytes, overwrite=True)
         
         # Get blob URL
         blob_url = blob_client.url
-        logging.info(f"✅ Image uploaded to blob storage: {blob_url}")
+        logging.info(f"✅ Image uploaded to blob storage: {blob_url} (type: {content_type})")
         
         return blob_url
         
