@@ -350,8 +350,10 @@ def upload_image_to_blob(base64_data: str, connection_string: str) -> str:
         blob_client = blob_service_client.get_blob_client(container=container_name, blob=unique_filename)
         
         # Upload with content type
+        from azure.storage.blob import ContentSettings
         content_type = f"image/{mime_type}"
-        blob_client.upload_blob(image_bytes, overwrite=True, content_settings={'content_type': content_type})
+        content_settings = ContentSettings(content_type=content_type)
+        blob_client.upload_blob(image_bytes, overwrite=True, content_settings=content_settings)
         
         # Get blob URL
         blob_url = blob_client.url
