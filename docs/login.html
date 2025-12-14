@@ -138,6 +138,8 @@
   </footer>
 
   <script>
+    // Use production API (local functions need additional setup)
+    // To use local: change to 'http://localhost:7071/api'
     const API_BASE_URL = 'https://bytebite-functions-g6gng2eahnb0f2gw.westeurope-01.azurewebsites.net/api';
     const LOGIN_ENDPOINT = `${API_BASE_URL}/login`;
     const SIGNUP_ENDPOINT = `${API_BASE_URL}/signup`;
@@ -190,16 +192,69 @@
       };
 
       try {
-        const response = await fetch(LOGIN_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        console.log('Calling login endpoint:', LOGIN_ENDPOINT);
+        
+        let response;
+        try {
+          response = await fetch(LOGIN_ENDPOINT, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload),
+            mode: 'cors',
+            credentials: 'omit',
+            cache: 'no-cache'
+          });
+        } catch (fetchError) {
+          console.error('Fetch error, trying XMLHttpRequest fallback...');
+          return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', LOGIN_ENDPOINT, true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('Accept', 'application/json');
+            
+            xhr.onload = function() {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                  const result = JSON.parse(xhr.responseText);
+                  localStorage.setItem('bytebite_token', result.token);
+                  localStorage.setItem('bytebite_role', result.role);
+                  localStorage.setItem('bytebite_name', result.name || '');
+                  loginSuccess.style.display = 'block';
+                  setTimeout(() => {
+                    window.location.href = result.role === 'driver' ? 'driver.html' : result.role === 'restaurant' ? 'restaurant.html' : 'customer.html';
+                  }, 900);
+                  resolve();
+                } catch (e) {
+                  reject(new Error('Invalid response from server'));
+                }
+              } else {
+                try {
+                  const errorData = JSON.parse(xhr.responseText);
+                  reject(new Error(errorData.error || `Server error: ${xhr.status}`));
+                } catch (e) {
+                  reject(new Error(`Server error: ${xhr.status} ${xhr.statusText}`));
+                }
+              }
+            };
+            
+            xhr.onerror = function() {
+              reject(new Error('Network error: Cannot connect to server. Check your connection and try again.'));
+            };
+            
+            xhr.send(JSON.stringify(payload));
+          });
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+          throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
 
         const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result.error || 'Invalid credentials');
-        }
+        console.log('Login success:', result);
 
         localStorage.setItem('bytebite_token', result.token);
         localStorage.setItem('bytebite_role', result.role);
@@ -210,7 +265,9 @@
           window.location.href = result.role === 'driver' ? 'driver.html' : result.role === 'restaurant' ? 'restaurant.html' : 'customer.html';
         }, 900);
       } catch (err) {
-        loginErrorText.textContent = err.message;
+        console.error('Login error:', err);
+        const errorMsg = err.message || 'Failed to login. Please check your connection and try again.';
+        loginErrorText.textContent = errorMsg;
         loginError.style.display = 'block';
       }
     });
@@ -229,16 +286,76 @@
       };
 
       try {
-        const response = await fetch(SIGNUP_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        console.log('Calling signup endpoint:', SIGNUP_ENDPOINT);
+        console.log('Payload:', { ...payload, password: '***' });
+        
+        let response;
+        try {
+          response = await fetch(SIGNUP_ENDPOINT, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload),
+            mode: 'cors',
+            credentials: 'omit',
+            cache: 'no-cache'
+          });
+        } catch (fetchError) {
+          console.error('Fetch error details:', fetchError);
+          console.error('Error name:', fetchError.name);
+          console.error('Error message:', fetchError.message);
+          
+          // Try XMLHttpRequest as fallback
+          console.log('Trying XMLHttpRequest fallback...');
+          return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', SIGNUP_ENDPOINT, true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('Accept', 'application/json');
+            
+            xhr.onload = function() {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                  const result = JSON.parse(xhr.responseText);
+                  console.log('Signup success (XHR):', result);
+                  localStorage.setItem('bytebite_token', result.token);
+                  localStorage.setItem('bytebite_role', result.role);
+                  localStorage.setItem('bytebite_name', result.name || payload.name);
+                  signupSuccess.style.display = 'block';
+                  setTimeout(() => {
+                    window.location.href = result.role === 'driver' ? 'driver.html' : result.role === 'restaurant' ? 'restaurant.html' : 'customer.html';
+                  }, 900);
+                  resolve();
+                } catch (e) {
+                  reject(new Error('Invalid response from server'));
+                }
+              } else {
+                try {
+                  const errorData = JSON.parse(xhr.responseText);
+                  reject(new Error(errorData.error || `Server error: ${xhr.status}`));
+                } catch (e) {
+                  reject(new Error(`Server error: ${xhr.status} ${xhr.statusText}`));
+                }
+              }
+            };
+            
+            xhr.onerror = function() {
+              reject(new Error('Network error: Cannot connect to server. Check your connection and try again.'));
+            };
+            
+            xhr.send(JSON.stringify(payload));
+          });
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+          throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
 
         const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result.error || 'Unable to create account');
-        }
+        console.log('Signup success:', result);
 
         localStorage.setItem('bytebite_token', result.token);
         localStorage.setItem('bytebite_role', result.role);
@@ -249,7 +366,9 @@
           window.location.href = result.role === 'driver' ? 'driver.html' : result.role === 'restaurant' ? 'restaurant.html' : 'customer.html';
         }, 900);
       } catch (err) {
-        signupErrorText.textContent = err.message;
+        console.error('Signup error:', err);
+        const errorMsg = err.message || 'Failed to create account. Please check your connection and try again.';
+        signupErrorText.textContent = errorMsg;
         signupError.style.display = 'block';
       }
     });

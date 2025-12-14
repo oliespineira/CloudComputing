@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ByteBite - Driver Portal</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-brand">
+        <h1>ByteBite</h1>
+        <p class="nav-subtitle">Driver Dashboard</p>
+      </div>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <span id="driverName"></span>
+        <button onclick="logout()" class="btn btn-secondary">Logout</button>
+      </div>
+    </div>
+  </nav>
+  <main class="container">
+    <section class="form-section">
+      <h2>Select Your Area</h2>
+      <form id="areaForm">
+        <div class="form-group">
+          <label for="driverArea">Delivery Area:</label>
+          <select id="driverArea" required>
+            <option value="">Choose your area</option>
+            <option value="North">North</option>
+            <option value="Central">Central</option>
+            <option value="South">South</option>
+          </select>
+          <button type="submit" class="btn-primary">Load Deliveries</button>
+        </div>
+      </form>
+    </section>
+    <section id="availableDeliveriesSection" style="display: none;">
+      <h2>Available Deliveries in <span id="selectedArea"></span></h2>
+      <div id="availableDeliveriesList" class="deliveries-grid"></div>
+      <div id="noDeliveriesMessage" class="message" style="display: none;">
+        No available deliveries.
+      </div>
+    </section>
+    <section id="myDeliveriesSection" style="display: none;">
+      <h2>My Active Deliveries</h2>
+      <div id="myDeliveriesList" class="deliveries-grid"></div>
+    </section>
+  </main>
+  <script>
+    // Using production API
+    const API_BASE_URL = 'https://bytebite-functions-g6gng2eahnb0f2gw.westeurope-01.azurewebsites.net/api';
+    let currentArea = '';
+    let driverEmail = '';
+    let refreshInterval;
+
+    window.addEventListener('load', () => {
+      const token = localStorage.getItem('bytebite_token');
+      const role = localStorage.getItem('bytebite_role');
+      const name = localStorage.getItem('bytebite_name');
+      driverEmail = localStorage.getItem('bytebite_email') || 'driver@test.com';
+      
+      if (!token || role !== 'driver') {
+        window.location.href = 'login.html';
+        return;
+      }
+      
+      document.getElementById('driverName').textContent = `Hello, ${name}`;
+      loadMyDeliveries();
+    });
+
+    function logout() {
+      localStorage.clear();
+      window.location.href = 'login.html';
+    }
+
+    document.getElementById('areaForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      currentArea = document.getElementById('driverArea').value;
+      if (!currentArea) return;
+      
+      await checkQueueForDeliveries();
+      if (refreshInterval) clearInterval(refreshInterval);
+      refreshInterval = setInterval(checkQueueForDeliveries, 5000);
+    });
+
+    async function checkQueueForDeliveries() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/CheckDeliveryQueue`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('bytebite_token')}`
+          },
+          body: JSON.stringify({ area: currentArea, driverEmail })
+        });
+        
+        const result = await response.json();
+        displayAvailableDeliveries(result.deliveries || []);
+      } catch (error) {
+        console.error('Error:', error);
+      }
+    }
+
+    function displayAvailableDeliveries(deliveries) {
+      const section = document.getElementById('availableDeliveriesSection');
+      const list = document.getElementById('availableDeliveriesList');
+      const noMessage = document.getElementById('noDeliveriesMessage');
+      
+      document.getElementById('selectedArea').textContent = currentArea;
+      section.style.display = 'block';
+      
+      if (deliveries.length === 0) {
+        list.innerHTML = '';
+        noMessage.style.display = 'block';
+        return;
+      }
+      
+      noMessage.style.display = 'none';
+      list.innerHTML = deliveries.map(d => `
+        <div class="delivery-card">
+          <h3>Order #${d.orderId.slice(0, 8)}</h3>
+          <p><strong>Restaurant:</strong> ${d.restaurantName}</p>
+          <p><strong>Customer:</strong> ${d.customerName}</p>
+          <p><strong>Address:</strong> ${d.customerAddress}</p>
+          <p><strong>Total:</strong> €${d.totalPrice.toFixed(2)}</p>
+          <button class="btn btn-primary" onclick="acceptDelivery('${d.deliveryId}', '${d.messageId}', '${d.popReceipt}')">
+            Accept Delivery
+          </button>
+        </div>
+      `).join('');
+    }
+
+    async function acceptDelivery(deliveryId, messageId, popReceipt) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/AcceptDeliveryFromQueue`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('bytebite_token')}`
+          },
+          body: JSON.stringify({ deliveryId, driverEmail, area: currentArea, messageId, popReceipt })
+        });
+        
+        if (!response.ok) throw new Error('Failed to accept');
+        
+        alert('Delivery accepted!');
+        await checkQueueForDeliveries();
+        await loadMyDeliveries();
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    async function loadMyDeliveries() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/GetMyDeliveries?driverEmail=${driverEmail}`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('bytebite_token')}` }
+        });
+        
+        const deliveries = await response.json();
+        displayMyDeliveries(deliveries.filter(d => d.status !== 'delivered'));
+      } catch (error) {
+        console.error('Error:', error);
+      }
+    }
+
+    function displayMyDeliveries(deliveries) {
+      const section = document.getElementById('myDeliveriesSection');
+      const list = document.getElementById('myDeliveriesList');
+      
+      if (deliveries.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+      
+      section.style.display = 'block';
+      list.innerHTML = deliveries.map(d => `
+        <div class="delivery-card active">
+          <h3>Order #${d.orderId.slice(0, 8)}</h3>
+          <p><strong>Status:</strong> ${d.status.toUpperCase()}</p>
+          <p><strong>Customer:</strong> ${d.customerName}</p>
+          <p><strong>Address:</strong> ${d.customerAddress}</p>
+          ${d.status === 'assigned' ? `<button class="btn btn-primary" onclick="updateStatus('${d.deliveryId}', '${d.area}', 'picked_up')">Mark Picked Up</button>` : ''}
+          ${d.status === 'picked_up' ? `<button class="btn btn-primary" onclick="updateStatus('${d.deliveryId}', '${d.area}', 'in_transit')">Mark In Transit</button>` : ''}
+          ${d.status === 'in_transit' ? `<button class="btn btn-success" onclick="updateStatus('${d.deliveryId}', '${d.area}', 'delivered')">Mark Delivered</button>` : ''}
+        </div>
+      `).join('');
+    }
+
+    async function updateStatus(deliveryId, area, status) {
+      try {
+        await fetch(`${API_BASE_URL}/UpdateDeliveryStatus`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('bytebite_token')}` },
+          body: JSON.stringify({ deliveryId, area, status, driverEmail })
+        });
+        
+        alert(`Status updated to ${status}!`);
+        await loadMyDeliveries();
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+  </script>
+  <style>
+    .deliveries-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .delivery-card {
+      background: white;
+      border-radius: 8px;
+      padding: 1rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      border-left: 4px solid #FF6B35;
+    }
+    .delivery-card.active {
+      border-left-color: #28A745;
+    }
+    .btn-success {
+      background-color: #28A745;
+      color: white;
+    }
+  </style>
+</body>
+</html>
+

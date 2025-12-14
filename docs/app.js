@@ -3,7 +3,7 @@
 // ========================================
 
 // Azure Functions endpoints
-// Production URL - works on GitHub Pages and locally
+// Using production API - configure JWT_SECRET in Azure Portal for signup/login to work
 const API_BASE_URL = 'https://bytebite-functions-g6gng2eahnb0f2gw.westeurope-01.azurewebsites.net/api';
 
 const API_CONFIG = {
@@ -41,7 +41,8 @@ if (document.getElementById('restaurantForm')) {
       description: document.getElementById('description').value.trim(),
       price: parseFloat(document.getElementById('price').value),
       prepTime: parseInt(document.getElementById('prepTime').value),
-      deliveryArea: document.getElementById('deliveryArea').value
+      deliveryArea: document.getElementById('deliveryArea').value,
+      imageUrl: document.getElementById('imageUrl').value.trim() || null
     };
 
     // Validation
@@ -65,7 +66,8 @@ if (document.getElementById('restaurantForm')) {
           description: formData.description,
           price: formData.price,
           prepTime: formData.prepTime,
-          area: formData.deliveryArea
+          area: formData.deliveryArea,
+          imageUrl: formData.imageUrl
         })
       });
 
@@ -154,10 +156,10 @@ if (document.getElementById('areaForm')) {
 
       const meals = await response.json();
       
-      // Add placeholder image URLs for meals without images
+      // Use the real image if available, otherwise use placeholder
       const mealsWithImages = meals.map(meal => ({
         ...meal,
-        imageUrl: `https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&sig=${meal.mealId}`
+        imageUrl: meal.imageUrl || `https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&sig=${meal.mealId}`
       }));
 
       currentMeals = mealsWithImages; // Store for addMeal function
