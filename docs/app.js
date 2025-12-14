@@ -42,7 +42,8 @@ if (document.getElementById('restaurantForm')) {
       price: parseFloat(document.getElementById('price').value),
       prepTime: parseInt(document.getElementById('prepTime').value),
       deliveryArea: document.getElementById('deliveryArea').value,
-      imageUrl: document.getElementById('imageUrl').value.trim() || null
+      imageUrl: document.getElementById('imageUrl').value.trim() || null,
+      imageFile: null
     };
 
     // Validation
@@ -53,22 +54,75 @@ if (document.getElementById('restaurantForm')) {
       return;
     }
 
+    // Handle image file upload
+    const imageFileInput = document.getElementById('imageFile');
+    if (imageFileInput.files && imageFileInput.files[0]) {
+      const file = imageFileInput.files[0];
+      
+      // Validate file size (5MB max)
+      if (file.size > 5 * 1024 * 1024) {
+        errorText.textContent = 'Image file is too large. Maximum size is 5MB.';
+        errorMessage.style.display = 'block';
+        return;
+      }
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        errorText.textContent = 'Please select an image file.';
+        errorMessage.style.display = 'block';
+        return;
+      }
+
+      // Convert file to base64
+      try {
+        formData.imageFile = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result); // This will be data:image/...;base64,...
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        
+        // Clear imageUrl if file is provided
+        formData.imageUrl = null;
+      } catch (error) {
+        errorText.textContent = 'Failed to read image file. Please try again.';
+        errorMessage.style.display = 'block';
+        return;
+      }
+    }
+
+    // Ensure only one image source is provided
+    if (formData.imageFile && formData.imageUrl) {
+      errorText.textContent = 'Please provide either an image file OR an image URL, not both.';
+      errorMessage.style.display = 'block';
+      return;
+    }
+
     try {
+      // Prepare request body
+      const requestBody = {
+        restaurantName: formData.restaurantName,
+        dishName: formData.dishName,
+        description: formData.description,
+        price: formData.price,
+        prepTime: formData.prepTime,
+        area: formData.deliveryArea
+      };
+
+      // Add image data (either file or URL, but not both)
+      if (formData.imageFile) {
+        requestBody.imageFile = formData.imageFile;
+      } else if (formData.imageUrl) {
+        requestBody.imageUrl = formData.imageUrl;
+      }
+
       // Call Azure Function to register meal
       const response = await fetch(API_CONFIG.endpoints.registerMeal, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          restaurantName: formData.restaurantName,
-          dishName: formData.dishName,
-          description: formData.description,
-          price: formData.price,
-          prepTime: formData.prepTime,
-          area: formData.deliveryArea,
-          imageUrl: formData.imageUrl
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const result = await response.json();
@@ -80,6 +134,12 @@ if (document.getElementById('restaurantForm')) {
       // Show success message
       successMessage.style.display = 'block';
       restaurantForm.reset();
+      
+      // Clear image preview
+      const imagePreview = document.getElementById('imagePreview');
+      if (imagePreview) {
+        imagePreview.style.display = 'none';
+      }
 
       // Scroll to success message
       successMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });

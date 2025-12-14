@@ -51,9 +51,25 @@
           </div>
 
           <div class="form-group">
-            <label for="imageUrl">Dish image URL</label>
-            <input type="url" id="imageUrl" placeholder="https://example.com/image.jpg">
-            <small>Optional: Provide a direct link to an image of your dish</small>
+            <label>Dish Image</label>
+            <div style="margin-bottom: 10px;">
+              <label for="imageFile" style="display: block; margin-bottom: 5px; font-weight: normal;">
+                <strong>Option 1:</strong> Upload Image File
+              </label>
+              <input type="file" id="imageFile" accept="image/*" style="margin-bottom: 10px;">
+              <small style="display: block; color: #666;">Select an image file (JPG, PNG, GIF, WebP - max 5MB)</small>
+            </div>
+            <div id="imagePreview" style="margin: 10px 0; display: none;">
+              <img id="previewImg" src="" alt="Preview" style="max-width: 300px; max-height: 200px; border: 1px solid #ddd; border-radius: 4px;">
+              <button type="button" onclick="clearImagePreview()" style="display: block; margin-top: 5px; padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Remove Image</button>
+            </div>
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+              <label for="imageUrl" style="display: block; margin-bottom: 5px; font-weight: normal;">
+                <strong>Option 2:</strong> Or provide an image URL
+              </label>
+              <input type="url" id="imageUrl" placeholder="https://example.com/image.jpg">
+              <small style="display: block; color: #666; margin-top: 5px;">Provide a direct link to an image (if not uploading a file)</small>
+            </div>
           </div>
 
           <div class="form-row">
@@ -120,5 +136,56 @@
   </footer>
 
   <script src="app.js"></script>
+  <script>
+    // Image preview functionality
+    const imageFileInput = document.getElementById('imageFile');
+    const imagePreview = document.getElementById('imagePreview');
+    const previewImg = document.getElementById('previewImg');
+    const imageUrlInput = document.getElementById('imageUrl');
+
+    imageFileInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        // Validate file size (5MB max)
+        if (file.size > 5 * 1024 * 1024) {
+          alert('Image file is too large. Maximum size is 5MB.');
+          e.target.value = '';
+          return;
+        }
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          alert('Please select an image file.');
+          e.target.value = '';
+          return;
+        }
+
+        // Show preview
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          previewImg.src = e.target.result;
+          imagePreview.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+
+        // Clear URL input when file is selected
+        imageUrlInput.value = '';
+      }
+    });
+
+    function clearImagePreview() {
+      imageFileInput.value = '';
+      imagePreview.style.display = 'none';
+      previewImg.src = '';
+    }
+
+    // Clear file input when URL is entered
+    imageUrlInput.addEventListener('input', function() {
+      if (this.value.trim()) {
+        imageFileInput.value = '';
+        imagePreview.style.display = 'none';
+      }
+    });
+  </script>
 </body>
 </html>

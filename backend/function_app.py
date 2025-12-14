@@ -5,10 +5,13 @@ import uuid
 import os
 import bcrypt
 import jwt
+import base64
+import re
 from azure.core.exceptions import ResourceNotFoundError
 from azure.data.tables import TableClient, TableServiceClient
 from datetime import datetime, timedelta
 from azure.storage.queue import QueueClient
+from azure.storage.blob import BlobServiceClient
 import hashlib
 
 
@@ -303,6 +306,65 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 # ========================================
+# BLOB STORAGE HELPER FUNCTIONS
+# ========================================
+
+def upload_image_to_blob(base64_data: str, connection_string: str) -> str:
+    """
+    Upload base64 encoded image to Azure Blob Storage.
+    Returns the blob URL.
+    """
+    try:
+        # Parse base64 data URL (format: data:image/jpeg;base64,/9j/4AAQ...)
+        if not base64_data.startswith('data:'):
+            raise ValueError("Invalid base64 data format")
+        
+        # Extract mime type and base64 content
+        match = re.match(r'data:image/(\w+);base64,(.+)', base64_data)
+        if not match:
+            raise ValueError("Invalid base64 data URL format")
+        
+        mime_type = match.group(1).lower()
+        base64_content = match.group(2)
+        
+        # Validate file type
+        allowed_types = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+        if mime_type not in allowed_types:
+            raise ValueError(f"Unsupported image type: {mime_type}. Allowed: {', '.join(allowed_types)}")
+        
+        # Decode base64
+        image_bytes = base64.b64decode(base64_content)
+        
+        # Validate file size (max 5MB)
+        max_size = 5 * 1024 * 1024  # 5MB in bytes
+        if len(image_bytes) > max_size:
+            raise ValueError(f"Image too large: {len(image_bytes)} bytes. Maximum size: 5MB")
+        
+        # Generate unique filename
+        file_extension = 'jpg' if mime_type == 'jpeg' else mime_type
+        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        
+        # Upload to blob storage
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        container_name = "mealimages"
+        blob_client = blob_service_client.get_blob_client(container=container_name, blob=unique_filename)
+        
+        # Upload with content type
+        content_type = f"image/{mime_type}"
+        blob_client.upload_blob(image_bytes, overwrite=True, content_settings={'content_type': content_type})
+        
+        # Get blob URL
+        blob_url = blob_client.url
+        logging.info(f"✅ Image uploaded to blob storage: {blob_url}")
+        
+        return blob_url
+        
+    except Exception as e:
+        logging.error(f"❌ Error uploading image to blob storage: {str(e)}")
+        raise
+
+
+# ========================================
 # RESTAURANT FUNCTIONS
 # ========================================
 
@@ -433,6 +495,7 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
         prep_time = req_body.get('prepTime')
         area = req_body.get('area')
         image_url = req_body.get('imageUrl')
+        image_file = req_body.get('imageFile')  # Base64 encoded image
 
         # basic validation
         if not all([restaurant_name, dish_name, description, area, price, prep_time]):
@@ -457,6 +520,26 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
                 headers={"Access-Control-Allow-Origin": "*"}
             )
 
+        # Handle image: either upload to blob storage or use provided URL
+        final_image_url = ""
+        if image_file:
+            # Upload image to blob storage
+            try:
+                final_image_url = upload_image_to_blob(image_file, connection_string)
+                logging.info(f"Image uploaded to blob: {final_image_url}")
+            except Exception as e:
+                logging.error(f"Failed to upload image: {str(e)}")
+                return func.HttpResponse(
+                    json.dumps({"error": f"Image upload failed: {str(e)}"}),
+                    status_code=400,
+                    mimetype="application/json",
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+        elif image_url:
+            # Use provided external URL
+            final_image_url = image_url.strip()
+            logging.info(f"Using external image URL: {final_image_url}")
+
         client = TableClient.from_connection_string(
             conn_str=connection_string,
             table_name="Meals"
@@ -470,7 +553,7 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
             "Description": description,
             "Price": price,
             "PrepTime": prep_time,
-            "ImageUrl": image_url or ""
+            "ImageUrl": final_image_url
         }
 
         client.create_entity(entity=entity)
@@ -479,7 +562,8 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({
                 "success": True,
                 "message": "Meal registered successfully",
-                "mealId": entity["RowKey"]
+                "mealId": entity["RowKey"],
+                "imageUrl": final_image_url
             }),
             status_code=200,
             mimetype="application/json",
