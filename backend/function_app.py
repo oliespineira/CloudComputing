@@ -5,10 +5,13 @@ import uuid
 import os
 import bcrypt
 import jwt
+import base64
+import re
 from azure.core.exceptions import ResourceNotFoundError
 from azure.data.tables import TableClient, TableServiceClient
 from datetime import datetime, timedelta
 from azure.storage.queue import QueueClient
+from azure.storage.blob import BlobServiceClient
 import hashlib
 
 
@@ -154,10 +157,19 @@ def signup(req: func.HttpRequest) -> func.HttpResponse:
 
         try:
             token = _generate_token(email=email, role=role, name=name)
+        except RuntimeError as exc:
+            logging.error(f"Failed to generate token: {exc}")
+            error_msg = str(exc) if "JWT_SECRET" in str(exc) else "Server configuration error: JWT_SECRET not set"
+            return func.HttpResponse(
+                json.dumps({"error": error_msg}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
         except Exception as exc:
             logging.error(f"Failed to generate token: {exc}")
             return func.HttpResponse(
-                json.dumps({"error": "Server configuration error"}),
+                json.dumps({"error": f"Token generation failed: {str(exc)}"}),
                 status_code=500,
                 mimetype="application/json",
                 headers={"Access-Control-Allow-Origin": "*"},
@@ -259,10 +271,19 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
 
         try:
             token = _generate_token(email=email, role=role, name=name)
+        except RuntimeError as exc:
+            logging.error(f"Failed to generate token: {exc}")
+            error_msg = str(exc) if "JWT_SECRET" in str(exc) else "Server configuration error: JWT_SECRET not set"
+            return func.HttpResponse(
+                json.dumps({"error": error_msg}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
         except Exception as exc:
             logging.error(f"Failed to generate token: {exc}")
             return func.HttpResponse(
-                json.dumps({"error": "Server configuration error"}),
+                json.dumps({"error": f"Token generation failed: {str(exc)}"}),
                 status_code=500,
                 mimetype="application/json",
                 headers={"Access-Control-Allow-Origin": "*"},
@@ -283,6 +304,65 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"},
         )
+
+# ========================================
+# BLOB STORAGE HELPER FUNCTIONS
+# ========================================
+
+def upload_image_to_blob(base64_data: str, connection_string: str) -> str:
+    """
+    Upload base64 encoded image to Azure Blob Storage.
+    Returns the blob URL.
+    """
+    try:
+        # Parse base64 data URL (format: data:image/jpeg;base64,/9j/4AAQ...)
+        if not base64_data.startswith('data:'):
+            raise ValueError("Invalid base64 data format")
+        
+        # Extract mime type and base64 content
+        match = re.match(r'data:image/(\w+);base64,(.+)', base64_data)
+        if not match:
+            raise ValueError("Invalid base64 data URL format")
+        
+        mime_type = match.group(1).lower()
+        base64_content = match.group(2)
+        
+        # Validate file type
+        allowed_types = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+        if mime_type not in allowed_types:
+            raise ValueError(f"Unsupported image type: {mime_type}. Allowed: {', '.join(allowed_types)}")
+        
+        # Decode base64
+        image_bytes = base64.b64decode(base64_content)
+        
+        # Validate file size (max 5MB)
+        max_size = 5 * 1024 * 1024  # 5MB in bytes
+        if len(image_bytes) > max_size:
+            raise ValueError(f"Image too large: {len(image_bytes)} bytes. Maximum size: 5MB")
+        
+        # Generate unique filename
+        file_extension = 'jpg' if mime_type == 'jpeg' else mime_type
+        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        
+        # Upload to blob storage
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        container_name = "mealimages"
+        blob_client = blob_service_client.get_blob_client(container=container_name, blob=unique_filename)
+        
+        # Upload with content type
+        content_type = f"image/{mime_type}"
+        blob_client.upload_blob(image_bytes, overwrite=True, content_settings={'content_type': content_type})
+        
+        # Get blob URL
+        blob_url = blob_client.url
+        logging.info(f"✅ Image uploaded to blob storage: {blob_url}")
+        
+        return blob_url
+        
+    except Exception as e:
+        logging.error(f"❌ Error uploading image to blob storage: {str(e)}")
+        raise
+
 
 # ========================================
 # RESTAURANT FUNCTIONS
@@ -414,6 +494,8 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
         price = req_body.get('price')
         prep_time = req_body.get('prepTime')
         area = req_body.get('area')
+        image_url = req_body.get('imageUrl')
+        image_file = req_body.get('imageFile')  # Base64 encoded image
 
         # basic validation
         if not all([restaurant_name, dish_name, description, area, price, prep_time]):
@@ -438,6 +520,26 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
                 headers={"Access-Control-Allow-Origin": "*"}
             )
 
+        # Handle image: either upload to blob storage or use provided URL
+        final_image_url = ""
+        if image_file:
+            # Upload image to blob storage
+            try:
+                final_image_url = upload_image_to_blob(image_file, connection_string)
+                logging.info(f"Image uploaded to blob: {final_image_url}")
+            except Exception as e:
+                logging.error(f"Failed to upload image: {str(e)}")
+                return func.HttpResponse(
+                    json.dumps({"error": f"Image upload failed: {str(e)}"}),
+                    status_code=400,
+                    mimetype="application/json",
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+        elif image_url:
+            # Use provided external URL
+            final_image_url = image_url.strip()
+            logging.info(f"Using external image URL: {final_image_url}")
+
         client = TableClient.from_connection_string(
             conn_str=connection_string,
             table_name="Meals"
@@ -450,7 +552,8 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
             "DishName": dish_name,
             "Description": description,
             "Price": price,
-            "PrepTime": prep_time
+            "PrepTime": prep_time,
+            "ImageUrl": final_image_url
         }
 
         client.create_entity(entity=entity)
@@ -459,7 +562,8 @@ def register_meal(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({
                 "success": True,
                 "message": "Meal registered successfully",
-                "mealId": entity["RowKey"]
+                "mealId": entity["RowKey"],
+                "imageUrl": final_image_url
             }),
             status_code=200,
             mimetype="application/json",
@@ -545,15 +649,7 @@ def get_meals_by_area(req: func.HttpRequest) -> func.HttpResponse:
         query_filter = f"PartitionKey eq '{area}'"
         
         for entity in client.query_entities(query_filter=query_filter):
-            # ========================================
-            # ✅ NUEVO: Get image URL from table
-            # ========================================
-            image_url = entity.get("ImageURL", "")
-            
-            # If no URL, use placeholder
-            if not image_url:
-                image_url = "https://via.placeholder.com/400x300?text=No+Image"
-            # ========================================
+            image_url = entity.get("ImageUrl", "")
             
             meal = {
                 "restaurantName": entity.get("RestaurantName", ""),
@@ -563,12 +659,136 @@ def get_meals_by_area(req: func.HttpRequest) -> func.HttpResponse:
                 "prepTime": int(entity.get("PrepTime", 0)),
                 "area": entity.get("PartitionKey", ""),
                 "mealId": entity.get("RowKey", ""),
-                "imageUrl": image_url  # ✅ NUEVO: Añadido imageUrl
+                "imageUrl": image_url
             }
             meals.append(meal)
 
         return func.HttpResponse(
             json.dumps(meals),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+    except Exception as e:
+        logging.error(f"Error: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+
+@app.route(route="SubmitOrder", methods=["POST", "OPTIONS"])
+def submit_order(req: func.HttpRequest) -> func.HttpResponse:
+    """Submit a customer order and create delivery record"""
+    logging.info('SubmitOrder function triggered')
+
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+        )
+
+    try:
+        req_body = req.get_json()
+        
+        customer_name = req_body.get('customerName')
+        customer_address = req_body.get('customerAddress')
+        customer_phone = req_body.get('customerPhone')
+        delivery_area = req_body.get('deliveryArea')
+        meals = req_body.get('meals', [])
+
+        if not all([customer_name, customer_address, delivery_area]) or not meals:
+            return func.HttpResponse(
+                json.dumps({"error": "Missing required fields"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+        if not connection_string:
+            logging.error("AZURE_STORAGE_CONNECTION_STRING not set")
+            return func.HttpResponse(
+                json.dumps({"error": "Server configuration error"}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        # Calculate totals
+        total_price = sum(meal.get('price', 0) * meal.get('quantity', 1) for meal in meals)
+        max_prep_time = max((meal.get('prepTime', 0) for meal in meals), default=0)
+        estimated_delivery_time = max_prep_time + 10 + 20  # prep + pickup + delivery
+
+        # Create order
+        orders_client = TableClient.from_connection_string(
+            conn_str=connection_string,
+            table_name="Orders"
+        )
+
+        order_id = str(uuid.uuid4())
+        order_entity = {
+            "PartitionKey": delivery_area,
+            "RowKey": order_id,
+            "CustomerName": customer_name,
+            "CustomerAddress": customer_address,
+            "CustomerPhone": customer_phone or "",
+            "TotalPrice": total_price,
+            "Status": "pending",
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "EstimatedDeliveryTime": estimated_delivery_time
+        }
+        orders_client.create_entity(entity=order_entity)
+
+        # Create delivery
+        deliveries_client = TableClient.from_connection_string(
+            conn_str=connection_string,
+            table_name="Deliveries"
+        )
+
+        delivery_id = str(uuid.uuid4())
+        delivery_entity = {
+            "PartitionKey": delivery_area,
+            "RowKey": delivery_id,
+            "OrderId": order_id,
+            "CustomerName": customer_name,
+            "CustomerAddress": customer_address,
+            "RestaurantName": meals[0].get('restaurantName') if meals else "Unknown",
+            "TotalPrice": total_price,
+            "Status": "pending",
+            "EstimatedDeliveryTime": estimated_delivery_time,
+            "CreatedAt": datetime.utcnow().isoformat()
+        }
+        deliveries_client.create_entity(entity=delivery_entity)
+
+        # Send notification to queue for drivers
+        try:
+            send_delivery_notification(
+                delivery_id=delivery_id,
+                order_id=order_id,
+                area=delivery_area,
+                restaurant_name=meals[0].get('restaurantName') if meals else "Unknown",
+                customer_name=customer_name
+            )
+        except Exception as e:
+            logging.error(f"Failed to send queue notification: {str(e)}")
+            # Don't fail the order if queue notification fails
+
+        return func.HttpResponse(
+            json.dumps({
+                "success": True,
+                "orderId": order_id,
+                "deliveryId": delivery_id,
+                "estimatedDeliveryTime": estimated_delivery_time,
+                "totalPrice": total_price
+            }),
             status_code=200,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"}
@@ -886,7 +1106,156 @@ def accept_delivery_from_queue(req: func.HttpRequest) -> func.HttpResponse:
     except Exception as e:
         logging.error(f"Unexpected error in AcceptDeliveryFromQueue: {str(e)}")
         return func.HttpResponse(
-            json.dumps({"error": f"Internal server error: {str(e)}"}),
+            json.dumps({"error": f"Internal server error: {str(e)}"}),  
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+
+@app.route(route="UpdateDeliveryStatus", methods=["POST", "OPTIONS"])
+def update_delivery_status(req: func.HttpRequest) -> func.HttpResponse:
+    """Driver updates delivery status"""
+    logging.info('UpdateDeliveryStatus function triggered')
+
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            },
+        )
+
+    try:
+        req_body = req.get_json()
+        delivery_id = req_body.get('deliveryId')
+        area = req_body.get('area')
+        status = req_body.get('status')
+        driver_email = req_body.get('driverEmail')
+        
+        valid_statuses = ['picked_up', 'in_transit', 'delivered']
+        
+        if not all([delivery_id, area, status, driver_email]) or status not in valid_statuses:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid request"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        
+        connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+        deliveries_client = TableClient.from_connection_string(
+            conn_str=connection_string,
+            table_name="Deliveries"
+        )
+        
+        delivery = deliveries_client.get_entity(partition_key=area, row_key=delivery_id)
+        
+        if delivery.get('DriverEmail') != driver_email:
+            return func.HttpResponse(
+                json.dumps({"error": "Not authorized"}),
+                status_code=403,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        
+        delivery['Status'] = status
+        if status == 'picked_up':
+            delivery['PickedUpAt'] = datetime.utcnow().isoformat()
+        elif status == 'in_transit':
+            delivery['InTransitAt'] = datetime.utcnow().isoformat()
+        elif status == 'delivered':
+            delivery['DeliveredAt'] = datetime.utcnow().isoformat()
+        
+        deliveries_client.update_entity(entity=delivery, mode='replace')
+        
+        return func.HttpResponse(
+            json.dumps({
+                "success": True,
+                "message": f"Status updated to {status}",
+                "deliveryId": delivery_id,
+                "status": status
+            }),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Error: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+
+@app.route(route="GetMyDeliveries", methods=["GET", "OPTIONS"])
+def get_my_deliveries(req: func.HttpRequest) -> func.HttpResponse:
+    """Get driver's assigned deliveries"""
+    logging.info('GetMyDeliveries function triggered')
+
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            },
+        )
+
+    try:
+        driver_email = req.params.get("driverEmail")
+        
+        if not driver_email:
+            return func.HttpResponse(
+                json.dumps({"error": "Driver email required"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        
+        connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+        deliveries_client = TableClient.from_connection_string(
+            conn_str=connection_string,
+            table_name="Deliveries"
+        )
+        
+        query_filter = f"DriverEmail eq '{driver_email}'"
+        deliveries = []
+        
+        for entity in deliveries_client.query_entities(query_filter=query_filter):
+            deliveries.append({
+                "deliveryId": entity.get("RowKey"),
+                "orderId": entity.get("OrderId"),
+                "area": entity.get("PartitionKey"),
+                "customerAddress": entity.get("CustomerAddress"),
+                "customerName": entity.get("CustomerName"),
+                "restaurantName": entity.get("RestaurantName"),
+                "totalPrice": float(entity.get("TotalPrice", 0)),
+                "status": entity.get("Status"),
+                "assignedAt": entity.get("AssignedAt"),
+                "pickedUpAt": entity.get("PickedUpAt"),
+                "deliveredAt": entity.get("DeliveredAt")
+            })
+        
+        deliveries.sort(key=lambda x: x.get('assignedAt', ''), reverse=True)
+        
+        return func.HttpResponse(
+            json.dumps(deliveries),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Error: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error"}),
             status_code=500,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"}
@@ -906,7 +1275,7 @@ def get_queue_client(area: str):
         queue_name=queue_name
     )
 
-def send_delivery_notification(delivery_id: str, order_id: str, area: str):
+def send_delivery_notification(delivery_id: str, order_id: str, area: str, restaurant_name: str, customer_name: str):
     """Send message to queue when new delivery is created"""
     try:
         queue_client = get_queue_client(area)
@@ -915,15 +1284,17 @@ def send_delivery_notification(delivery_id: str, order_id: str, area: str):
             "deliveryId": delivery_id,
             "orderId": order_id,
             "area": area,
+            "restaurantName": restaurant_name,
+            "customerName": customer_name,
             "timestamp": datetime.utcnow().isoformat(),
             "type": "new_delivery"
         }
         
-        # Send message to queue (Base64 encoded by default)
         queue_client.send_message(json.dumps(message))
-        logging.info(f"Sent delivery notification to queue: {delivery_id}")
+        logging.info(f"✅ Sent delivery notification to queue: {delivery_id}")
         
     except Exception as e:
-        logging.error(f"Error sending queue message: {str(e)}")
+        logging.error(f"❌ Error sending queue message: {str(e)}")
+        # Don't fail the order if queue notification fails
 
-        # Don't fail the order if queue fails - delivery still created in table
+
